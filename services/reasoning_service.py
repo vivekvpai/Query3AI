@@ -20,7 +20,7 @@ def answer(question: str, context_nodes: list[dict]) -> str:
     try:
         user_prompt = f"Context:\n{context_text}\n\nQuestion:\n{question}"
     
-        if settings.USE_GROQ:
+        if settings.MODEL_PROVIDER == "groq":
             client = Groq(api_key=settings.GROQ_API_KEY)
             response = client.chat.completions.create(
                 model=settings.GROQ_REASONING_MODEL,
@@ -31,7 +31,7 @@ def answer(question: str, context_nodes: list[dict]) -> str:
             )
             return response.choices[0].message.content
         else:
-            model = settings.CLOUD_REASONING_MODEL if settings.USE_CLOUD else settings.REASONING_MODEL
+            model = settings.CLOUD_REASONING_MODEL if settings.MODEL_PROVIDER == "ollama_cloud" else settings.REASONING_MODEL
             response = ollama.chat(
                 model=model,
                 messages=[

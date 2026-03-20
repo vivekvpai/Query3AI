@@ -18,7 +18,7 @@ def build_tree(chunks: list[str]) -> dict:
     )
     
     try:
-        if settings.USE_GROQ:
+        if settings.MODEL_PROVIDER == "groq":
             client = Groq(api_key=settings.GROQ_API_KEY)
             response = client.chat.completions.create(
                 model=settings.GROQ_TREE_MODEL,
@@ -30,7 +30,7 @@ def build_tree(chunks: list[str]) -> dict:
             )
             raw_content = response.choices[0].message.content
         else:
-            model = settings.CLOUD_TREE_MODEL if settings.USE_CLOUD else settings.TREE_MODEL
+            model = settings.CLOUD_TREE_MODEL if settings.MODEL_PROVIDER == "ollama_cloud" else settings.TREE_MODEL
             response = ollama.chat(
                 model=model,
                 messages=[

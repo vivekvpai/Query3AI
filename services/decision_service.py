@@ -42,7 +42,7 @@ def filter_nodes(question: str, nodes: list) -> list:
         )
         
         try:
-            if settings.USE_GROQ:
+            if settings.MODEL_PROVIDER == "groq":
                 client = Groq(api_key=settings.GROQ_API_KEY)
                 response = client.chat.completions.create(
                     model=settings.GROQ_DECISION_MODEL,
@@ -54,7 +54,7 @@ def filter_nodes(question: str, nodes: list) -> list:
                 )
                 raw = response.choices[0].message.content.strip().upper()
             else:
-                model = settings.CLOUD_DECISION_MODEL if settings.USE_CLOUD else settings.DECISION_MODEL
+                model = settings.CLOUD_DECISION_MODEL if settings.MODEL_PROVIDER == "ollama_cloud" else settings.DECISION_MODEL
                 response = ollama.chat(
                     model=model,
                     messages=[

@@ -56,7 +56,7 @@ def ingest(
     Ingest a document, extract text, chunk it, build tree, and store in Neo4j.
     """
     if cloud:
-        settings.USE_CLOUD = True
+        settings.MODEL_PROVIDER = "ollama_cloud"
 
     if not os.path.exists(file_path):
         console.print(
@@ -257,7 +257,7 @@ def ask(
     Ask a question based on ingested documents.
     """
     if cloud:
-        settings.USE_CLOUD = True
+        settings.MODEL_PROVIDER = "ollama_cloud"
 
     try:
         documents = neo4j_client.get_nodes("Document")
@@ -386,7 +386,7 @@ def chat(
     Start an interactive chat session based on ingested documents.
     """
     if cloud:
-        settings.USE_CLOUD = True
+        settings.MODEL_PROVIDER = "ollama_cloud"
 
     try:
         all_section_nodes = get_all_nodes()

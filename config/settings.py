@@ -7,16 +7,17 @@ load_dotenv()
 class Settings:
     CHUNK_SIZE: int = int(os.getenv("QUERY3AI_CHUNK_SIZE", "500"))
 
+    # Model Provider Options: "ollama_local", "ollama_cloud", "groq"
+    MODEL_PROVIDER: str = "groq"
+
     TREE_MODEL: str = "phi3.5:3.8b"
     DECISION_MODEL: str = "gemma2:2b"
     REASONING_MODEL: str = "deepseek-r1:7b"
-    USE_CLOUD: bool = False
 
     CLOUD_TREE_MODEL: str = "qwen3.5:cloud"
     CLOUD_DECISION_MODEL: str = "kimi-k2.5:cloud"
     CLOUD_REASONING_MODEL: str = "glm-5:cloud"
 
-    USE_GROQ: bool = True
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
     GROQ_TREE_MODEL: str = "llama-3.3-70b-versatile"
@@ -56,19 +57,19 @@ class Settings:
     """
 
     def get_active_tree_model(self) -> str:
-        if self.USE_GROQ:
+        if self.MODEL_PROVIDER == "groq":
             return self.GROQ_TREE_MODEL
-        return self.CLOUD_TREE_MODEL if self.USE_CLOUD else self.TREE_MODEL
+        return self.CLOUD_TREE_MODEL if self.MODEL_PROVIDER == "ollama_cloud" else self.TREE_MODEL
 
     def get_active_decision_model(self) -> str:
-        if self.USE_GROQ:
+        if self.MODEL_PROVIDER == "groq":
             return self.GROQ_DECISION_MODEL
-        return self.CLOUD_DECISION_MODEL if self.USE_CLOUD else self.DECISION_MODEL
+        return self.CLOUD_DECISION_MODEL if self.MODEL_PROVIDER == "ollama_cloud" else self.DECISION_MODEL
 
     def get_active_reasoning_model(self) -> str:
-        if self.USE_GROQ:
+        if self.MODEL_PROVIDER == "groq":
             return self.GROQ_REASONING_MODEL
-        return self.CLOUD_REASONING_MODEL if self.USE_CLOUD else self.REASONING_MODEL
+        return self.CLOUD_REASONING_MODEL if self.MODEL_PROVIDER == "ollama_cloud" else self.REASONING_MODEL
 
 
 settings = Settings()

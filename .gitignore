@@ -47,7 +47,5 @@ venv.bak/
 .DS_Store
 
 # Document Data
-docs/
-temp_output/
-*.log
-*.json
+temp_output/*.txt
+temp_output/*.json
