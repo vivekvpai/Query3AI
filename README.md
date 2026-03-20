@@ -1,116 +1,200 @@
 # Query3AI
 
-Query3AI is an intelligent document query system operating through a tailored 3-Agent architecture. It orchestrates document ingestion, semantic chunk tree generation, node relevance evaluation, and final answer reasoning, backed natively by Neo4j graph storage.
+> An intelligent, local-first document query system powered by a 3-Agent AI pipeline and Neo4j graph storage.
 
-## 🚀 Quick Start Guide
+---
 
-### 1. Install Project Dependencies
-Open your terminal and navigate to the project directory. First, create and activate a Python virtual environment:
+## What Is Query3AI?
 
-**Windows:**
-```powershell
+Query3AI lets you ingest documents (PDF, DOCX, TXT) and query them in natural language through a CLI. It does not flatten your documents into a pile of text chunks like standard AI tools. It reads the structure, builds a knowledge graph, and reasons with three specialised AI agents — one to organise, one to filter, one to answer.
+
+```bash
+python main.py ingest report.pdf
+python main.py ask "What were the key findings in section 3?"
+
+# Answer:
+# The key findings relate to...
+#
+# Sources:
+# - Section 3: Market Analysis Summary
+```
+
+No cloud required. No API keys. Runs on a standard laptop.
+
+---
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Why Query3AI?](docs/WHY_QUERY3AI.md) | The problem it solves, the philosophy behind it, and what it is not |
+| [Architecture](docs/ARCHITECTURE.md) | The 3-Agent pipeline, graph schema, project structure, and model details |
+| [Use Cases & Case Studies](docs/USE_CASES.md) | Real-world scenarios: legal review, resume screening, developer docs, research |
+| [Advantages & Comparisons](docs/ADVANTAGES.md) | Honest pros/cons and comparison vs RAG, ChatGPT, LlamaIndex |
+
+---
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
 python -m venv venv
+
+# Windows
 .\venv\Scripts\activate
-```
 
-**macOS/Linux:**
-```bash
-python3 -m venv venv
+# macOS / Linux
 source venv/bin/activate
-```
 
-Next, install the required packages:
-```bash
 pip install -r requirements.txt
 ```
 
-### 2. Start and Configure Neo4j
-The system needs Neo4j to store the extracted node trees.
-- Run your local Neo4j desktop application or spin it up via Docker.
-- By default, `settings.py` looks for:
-  - **URI**: `bolt://localhost:7687`
-  - **User**: `neo4j`
-  - **Password**: `password`
-- *(If your credentials differ, simply update them inside `config/settings.py`!)*
+### 2. Start Neo4j
 
-### 3. Start Ollama and Pull Models
-Our 3-agent offline pipeline requires three specific models downloaded to your local Ollama instance:
-1. Make sure Ollama is running in the background (`ollama serve` or open the Ollama app).
-2. Pull the necessary local models one by one in your terminal:
-   ```bash
-   ollama pull phi3.5         # Tree Agent (Tree Builder)
-   ollama pull gemma2:2b      # Decision Agent (Decision Filter)
-   ```
-## 🚀 Using the Dedicated App Interface
+Run Neo4j locally (Desktop or Docker):
 
-If you want a dedicated Graphical User Interface mapping completely avoiding the standard raw command logs, double-click the `start_chat.bat` (Windows) or execute `start_chat.sh` (Mac/Linux)!
+```bash
+docker run -p 7687:7687 -p 7474:7474 \
+  -e NEO4J_AUTH=neo4j/password \
+  neo4j:latest
+```
 
-These scripts will securely generate a bespoke isolated terminal execution instance parsing custom functionality natively through standard chat limits natively!
+Default connection in `config/settings.py`:
+- URI: `bolt://localhost:7687`
+- User: `neo4j`
+- Password: `password`
 
-### 🔮 Interactive TUI `/Slash` Commands
-Once inside the running continuous Chat interface, inputting standard `/` strings will explicitly prevent AI LLM consumption logically executing UI changes instantaneously!
+### 3. Start Ollama and pull models
 
-- `/about`: Details the exact pipeline parameters spanning Query3AI processing layers natively.
-- `/help`: Print exactly all functional UI slash bindings beautifully rendering formatting Tables natively.
-- `/listdocs`: Trigger the global CLI node iteration loop implicitly surfacing active documents in Neo4j.
-- `/list`: Explicitly evaluate granular total sections scaling explicitly mapping entire neo4j structural chunk depths securely.
-- `/delete`: Trigger an explicit interactive protection block removing specific documents exactly erasing matching Nodes globally!
-- `/clear`: Refreshes and aggressively clears active OS level application log buffers implicitly matching clean terminal execution constraints globally!
-- `/exit`: Stop running executable terminal cleanly!
+```bash
+# Make sure Ollama is running
+ollama serve
 
-## Testing / Execution Examples
-   ```bash
-   ollama pull deepseek-r1:7b # Reasoning Agent (Reasoning Engine)
-   ```
+# Pull the three agent models
+ollama pull phi3.5          # Tree Agent
+ollama pull gemma2:2b       # Decision Agent
+ollama pull deepseek-r1:7b  # Reasoning Agent
+```
 
-### 4. Environment Variables Configs
-Modify variables globally via `config/settings.py` if needed:
-- **TREE_MODEL**: Document structure interpretation (default `phi3.5`)
-- **DECISION_MODEL**: Chunk relevance parsing (default `gemma2:2b`)
-- **REASONING_MODEL**: Semantic reasoning engine (default `deepseek-r1:7b`)
+### 4. Ingest and query
+
+```bash
+python main.py ingest path/to/document.pdf
+python main.py ask "Your question here"
+```
 
 ---
 
-## 🛠️ CLI Commands
+## CLI Commands
 
-Query3AI uses Typer to execute unified terminal commands:
-
-- **Ingest a document:**
-  ```bash
-  python main.py ingest "path/to/your/document.docx"
-  ```
-  Query3AI natively supports **PDF**, **DOCX**, and **TXT** files. It extracts contents locally, chunking, tree generation with Tree Agent, and inserts nodes mapping connected Neo4j instance.
-  
-- **List ingested documents:**
-  ```bash
-  python main.py list
-  ```
-  Returns a comprehensive table summarizing all uploaded files spanning across Document nodes.
-
-- **Inspect a specific document tree:**
-  ```bash
-  python main.py inspect <doc_id>
-  ```
-  Explores the exact mapped branch layout `Document -> Sections -> Chunks` directly extracted from the graph space.
-
-- **Ask questions:**
-  ```bash
-  python main.py ask "Can you summarize the main points?" [--cloud]
-  ```
-  Initializes Neo4j bulk lookup → Decision Agent filters contextual scope per relevance rules → Reasoning Agent derives logic against remaining blocks and serves dynamic answers.
-  Enable cloud equivalent inference routing strictly via the `--cloud` option.
-
-- **Delete an ingested document:**
-  ```bash
-  python main.py delete <doc_id>
-  ```
-  Cascades and gently removes the complete Document layout scope permanently along with related sections/chunks. (User confirmation required).
+| Command | Description |
+|---|---|
+| `python main.py ingest <file>` | Ingest a PDF, DOCX, or TXT file |
+| `python main.py ask "<question>"` | Query all ingested documents |
+| `python main.py ask "<question>" --cloud` | Query using cloud models |
+| `python main.py list` | List all ingested documents |
+| `python main.py inspect <doc_id>` | Inspect a document's tree structure |
+| `python main.py delete <doc_id>` | Delete a document and all its nodes |
 
 ---
 
-## ☁️ Cloud Configuration Guide
-Toggle settings inside `config/settings.py` natively or just use the `--cloud` flag.
-Cloud instances trigger substitution maps internally if invoked: 
-- `qwen3.5:cloud`
-- `kimi-k2.5:cloud`
-- `glm-5:cloud`
+## The 3-Agent Pipeline
+
+```
+Document
+    │
+    ▼
+[Agent 1 — Tree AI]      phi3.5 / qwen3.5:cloud
+Builds hierarchical tree: Document → Sections → Chunks
+    │
+    ▼
+Neo4j Graph Database
+    │
+    ▼
+[Agent 2 — Decision AI]  gemma2:2b / kimi-k2.5:cloud
+Filters sections by relevance to the query (YES/NO)
+    │
+    ▼
+[Agent 3 — Reasoning AI] deepseek-r1:7b / glm-5:cloud
+Generates final answer from filtered context only
+    │
+    ▼
+Answer + Source Sections
+```
+
+---
+
+## Model Configuration
+
+All models are configured in `config/settings.py`:
+
+```python
+# Local models (default)
+TREE_MODEL      = "phi3.5"
+DECISION_MODEL  = "gemma2:2b"
+REASONING_MODEL = "deepseek-r1:7b"
+
+# Cloud models (--cloud flag or USE_CLOUD = True)
+TREE_MODEL_CLOUD      = "qwen3.5:cloud"
+DECISION_MODEL_CLOUD  = "kimi-k2.5:cloud"
+REASONING_MODEL_CLOUD = "glm-5:cloud"
+```
+
+---
+
+## TUI / Chat Interface
+
+For a conversational interface instead of raw CLI commands:
+
+```bash
+# Windows
+start_chat.bat
+
+# macOS / Linux
+./start_chat.sh
+```
+
+### Slash Commands
+
+| Command | Action |
+|---|---|
+| `/help` | Show all available commands |
+| `/listdocs` | List all ingested documents |
+| `/list` | Show full document tree with sections |
+| `/delete` | Delete a specific document |
+| `/clear` | Clear the terminal |
+| `/about` | Show pipeline and model info |
+| `/exit` | Exit the interface |
+
+---
+
+## Requirements
+
+| Component | Minimum | Recommended |
+|---|---|---|
+| RAM | 8 GB | 16 GB |
+| CPU | 4 cores | 8 cores |
+| GPU | Not required | Optional |
+| Python | 3.10+ | 3.11+ |
+| Storage | 10 GB free | 20 GB free |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| CLI | Typer + Rich |
+| AI Inference | Ollama |
+| Local Models | phi3.5, gemma2:2b, deepseek-r1:7b |
+| Cloud Models | qwen3.5:cloud, kimi-k2.5:cloud, glm-5:cloud |
+| Graph Database | Neo4j |
+| Document Parsing | PyMuPDF, python-docx, pandas |
+| Data Validation | Pydantic |
+
+---
+
+## License
+
+MIT
