@@ -20,12 +20,12 @@ if [ ! -d "venv" ]; then
     echo "[INFO] Activating environment..."
     source venv/bin/activate
     
-    echo "[INFO] Installing dependencies from requirements.txt..."
-    pip install -r requirements.txt
+    echo "[INFO] Installing package query3ai..."
+    pip install -e .
     
     echo "[INFO] Installation successful!"
 else
     source venv/bin/activate
 fi
 
-python main.py chat
+query3ai chat

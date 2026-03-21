@@ -1,4 +1,4 @@
-from utils.file_handler import extract_raw_text
+from query3ai.utils.file_handler import extract_raw_text
 
 def extract_text(file_path: str) -> str:
     """Wrapper to extract text safely."""

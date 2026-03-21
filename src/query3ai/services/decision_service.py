@@ -3,7 +3,7 @@ import json
 import datetime
 import ollama  # type: ignore
 from groq import Groq  # type: ignore
-from config.settings import settings  # type: ignore
+from query3ai.config.settings import settings  # type: ignore
 
 
 def filter_nodes(question: str, nodes: list) -> list:

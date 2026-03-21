@@ -1,7 +1,7 @@
 import re
 import ollama  # type: ignore
 from groq import Groq  # type: ignore
-from config.settings import settings  # type: ignore
+from query3ai.config.settings import settings  # type: ignore
 
 
 def answer(question: str, context_nodes: list[dict]) -> str:

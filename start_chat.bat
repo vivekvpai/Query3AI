@@ -10,13 +10,13 @@ IF NOT EXIST "venv" (
     echo [INFO] Activating environment...
     call .\venv\Scripts\activate.bat
     
-    echo [INFO] Installing dependencies from requirements.txt...
-    pip install -r requirements.txt
+    echo [INFO] Installing package query3ai...
+    pip install -e .
     
     echo [INFO] Installation successful!
 ) ELSE (
     call .\venv\Scripts\activate.bat
 )
 
-python main.py chat
+query3ai chat
 pause

@@ -1,5 +1,5 @@
 from neo4j import GraphDatabase
-from config.settings import settings
+from query3ai.config.settings import settings
 import uuid
 
 class Neo4jClient:

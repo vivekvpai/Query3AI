@@ -13,13 +13,13 @@ from rich.json import JSON  # type: ignore
 from rich.markdown import Markdown  # type: ignore
 import readchar  # type: ignore
 
-from services.document_service import extract_text, chunk_text  # type: ignore
-from services.reasoning_service import answer  # type: ignore
-from services.tree_service import build_tree  # type: ignore
-from services.decision_service import filter_nodes  # type: ignore
-from services.graph_service import store_tree, get_nodes, get_all_nodes, delete_document  # type: ignore
-from db.neo4j_client import neo4j_client  # type: ignore
-from config.settings import settings  # type: ignore
+from query3ai.services.document_service import extract_text, chunk_text  # type: ignore
+from query3ai.services.reasoning_service import answer  # type: ignore
+from query3ai.services.tree_service import build_tree  # type: ignore
+from query3ai.services.decision_service import filter_nodes  # type: ignore
+from query3ai.services.graph_service import store_tree, get_nodes, get_all_nodes, delete_document  # type: ignore
+from query3ai.db.neo4j_client import neo4j_client  # type: ignore
+from query3ai.config.settings import settings  # type: ignore
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.layout.containers import Window, HSplit
@@ -1154,5 +1154,64 @@ def chat(
             else:
                 console.print("[dim]Sources: None[/dim]\n")
 
+    except Exception as e:
+        handle_error(e)
+
+@app.command("init")
+def init():
+    """
+    Initialize a new Query3AI workspace in the current directory.
+    Generates required docker-compose.yml and .env files.
+    """
+    import os
+    from rich.panel import Panel
+    
+    compose_content = """version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:latest
+    container_name: query3ai_neo4j
+    ports:
+      - "7474:7474"   # HTTP web interface
+      - "7687:7687"   # Bolt protocol
+    environment:
+      - NEO4J_AUTH=none
+    volumes:
+      - ./neo4j_data:/data
+"""
+    env_content = """# Query3AI Configuration
+# NEO4J_URI=bolt://localhost:7687
+# NEO4J_USER=neo4j
+# NEO4J_PASSWORD=
+
+# GROQ_API_KEY=your_key_here
+"""
+    cwd = os.getcwd()
+    compose_path = os.path.join(cwd, "docker-compose.yml")
+    env_path = os.path.join(cwd, ".env")
+    
+    try:
+        if not os.path.exists(compose_path):
+            with open(compose_path, "w") as f:
+                f.write(compose_content)
+            console.print(f"[green]Created {compose_path}[/green]")
+        else:
+            console.print(f"[yellow]Skipped {compose_path} (already exists)[/yellow]")
+            
+        if not os.path.exists(env_path):
+            with open(env_path, "w") as f:
+                f.write(env_content)
+            console.print(f"[green]Created {env_path}[/green]")
+        else:
+            console.print(f"[yellow]Skipped {env_path} (already exists)[/yellow]")
+            
+        success_msg = (
+            "Workspace initialized successfully!\\n\\n"
+            "1. Run [bold cyan]docker-compose up -d[/bold cyan] to start Neo4j.\\n"
+            "2. Edit [bold cyan].env[/bold cyan] if you need to add your GROQ_API_KEY.\\n"
+            "3. Run [bold cyan]query3ai chat[/bold cyan] to begin."
+        )
+        console.print(Panel(success_msg, title="Setup Complete", border_style="green"))
     except Exception as e:
         handle_error(e)

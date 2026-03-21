@@ -1,4 +1,4 @@
-from db.neo4j_client import neo4j_client
+from query3ai.db.neo4j_client import neo4j_client
 from typing import List
 import datetime
 import uuid

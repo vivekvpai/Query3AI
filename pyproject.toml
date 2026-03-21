@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "query3ai"
+version = "0.1.0"
+authors = [
+  { name="Query3AI Author", email="author@example.com" },
+]
+description = "Query3AI: A multi-agent system combining document structure extraction, relevance filtering, and reasoning with Neo4j."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "typer",
+    "rich",
+    "pymupdf",
+    "python-docx",
+    "python-dotenv>=1.0.0",
+    "prompt_toolkit>=3.0.0",
+    "readchar>=4.0.0",
+    "ollama",
+    "neo4j",
+    "groq"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/vivekvpai/Query3AI"
+
+[project.scripts]
+query3ai = "query3ai.cli.commands:app"
