@@ -44,6 +44,23 @@ The entire system's accuracy depends heavily on how well the Tree AI structures 
 
 **Mitigation:** Use `qwen3.5:cloud` as the Tree AI for important documents. The cloud model produces significantly better trees.
 
+### 3. Document Size Is Bounded by Your Tree AI Model
+
+This is the most important limitation to understand. Query3AI's ability to handle large documents **entirely depends on which Tree AI model you are using**. The Tree AI receives all document chunks in a single prompt — if that exceeds the model's context window, the ingestion will either fail or silently produce an incomplete tree.
+
+| Tree AI Model | Context Window | Approx. Max Document Size | Safe For |
+|---|---|---|---|
+| `phi3.5` (local, default) | 128K tokens | ~150–180 pages | Most business documents |
+| `qwen3.5:cloud` (cloud) | 32K tokens | ~35–40 pages | Short to medium documents |
+
+**The counterintuitive reality:** your local model (`phi3.5`) actually handles *larger* documents than the cloud Tree AI (`qwen3.5`) because it has a 4x bigger context window. For very large documents, local is the better choice.
+
+**Mitigation (current):** Split very large documents into logical parts (e.g. by chapter) and ingest each part separately.
+
+**Mitigation (planned):** Batched tree building — the Tree AI will process chunks in batches and merge the resulting trees. This will remove the size ceiling entirely and is on the roadmap.
+
+> The Decision AI and Reasoning AI are **not** affected by document size — Decision AI only reads short summaries, and Reasoning AI only receives pre-filtered chunks. Size is exclusively a Tree AI concern.
+
 ### 3. No OCR Support
 Query3AI cannot read scanned PDFs or image-based documents. It requires documents with a machine-readable text layer. A scanned contract or photographed whiteboard will produce empty or garbage output.
 
@@ -81,7 +98,7 @@ The local models (phi3.5, gemma2:2b, deepseek-r1) are primarily English-trained.
 | **Free to use** | ✅ | Depends | ❌ | ✅ |
 | **Programmable / API** | ✅ | ✅ | Limited | ❌ |
 | **OCR / scanned docs** | ❌ | Depends | Partial | ✅ |
-| **Handles large docs well** | ✅ | Partial | ❌ (token limit) | ❌ |
+| **Handles large docs well** | ⚠️ Model-dependent | Partial | ❌ (token limit) | ❌ |
 
 ---
 

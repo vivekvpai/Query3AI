@@ -126,7 +126,7 @@ python main.py ask "How do we process a customer refund request?"
 
 ## What Query3AI Is Best At
 
-✅ **Long documents** — books, reports, contracts, technical specs
+✅ **Medium to large documents** — how large depends on the Tree AI model you use (see table below)
 
 ✅ **Structured documents** — anything with clear sections, headings, topics
 
@@ -137,6 +137,19 @@ python main.py ask "How do we process a customer refund request?"
 ✅ **Traceable answers** — when "where did that come from?" matters
 
 ✅ **Multi-document corpora** — a folder of related files treated as a knowledge base
+
+### Document Size Limits by Model
+
+The bottleneck for large documents is the **Tree AI (Agent 1)** — it receives all chunks at once to build the tree. Its context window determines the maximum document size Query3AI can handle.
+
+| Tree AI Model | Type | Context Window | Approx. Max Document Size |
+|---|---|---|---|
+| `phi3.5` | Local (default) | 128K tokens | ~150–180 pages |
+| `qwen3.5:cloud` | Cloud | 32K tokens | ~35–40 pages |
+
+> **Note:** The Decision AI and Reasoning AI are not the bottleneck — Decision AI only reads short summaries, and Reasoning AI only receives pre-filtered chunks. The Tree AI at ingest time is the only size-sensitive step.
+
+**What happens if your document exceeds the limit?** The Tree AI call will either fail with a context overflow error or silently truncate the document, producing an incomplete tree. The fix is batched tree building — a planned future enhancement where the tree is built in segment batches and merged. This will remove the size ceiling entirely.
 
 ---
 

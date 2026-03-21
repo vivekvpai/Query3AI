@@ -159,13 +159,16 @@ start_chat.bat
 
 | Command | Action |
 |---|---|
-| `/help` | Show all available commands |
-| `/listdocs` | List all ingested documents |
-| `/list` | Show full document tree with sections |
-| `/delete` | Delete a specific document |
-| `/clear` | Clear the terminal |
-| `/about` | Show pipeline and model info |
-| `/exit` | Exit the interface |
+| `/about` | Learn about Query3AI Interactive Chat |
+| `/help` | Display usage and all available commands |
+| `/ingest` | Ingest a new document from a specified file path |
+| `/listdocs` | List all indexed documents |
+| `/list` | List available assets |
+| `/deletedoc` | Remove a specific document from the database |
+| `/cleanupdocs` | Delete all documents from the database |
+| `/cleanupresorce` | Clean up temporary logs and JSON files |
+| `/clear` | Clear chat history |
+| `/exit` | Exit the interactive session |
 
 ---
 
