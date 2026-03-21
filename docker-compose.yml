@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:latest
+    container_name: query3ai_neo4j
+    ports:
+      - "7474:7474"   # HTTP web interface
+      - "7687:7687"   # Bolt protocol (used by the Python client)
+    environment:
+      # Disabling auth to easily connect without needing to change your existing settings.
+      # You can change this to "neo4j/yourpassword" in production if you adjust your .env
+      - NEO4J_AUTH=none
+    volumes:
+      - ./neo4j_data:/data

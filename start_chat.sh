@@ -2,6 +2,15 @@
 clear
 echo "Initializing Query3AI Engine..."
 
+echo "[INFO] Checking Neo4j Docker container..."
+if command -v docker-compose &> /dev/null; then
+    docker-compose up -d
+elif docker compose version &> /dev/null; then
+    docker compose up -d
+else
+    echo "[WARNING] Docker or Docker Compose not found. Please ensure Neo4j is running!"
+fi
+
 # Check if 'venv' directory exists
 if [ ! -d "venv" ]; then
     echo "[INFO] Virtual environment 'venv' not found. Creating it now..."
