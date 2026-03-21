@@ -21,6 +21,15 @@ from services.graph_service import store_tree, get_nodes, get_all_nodes, delete_
 from db.neo4j_client import neo4j_client  # type: ignore
 from config.settings import settings  # type: ignore
 
+from prompt_toolkit.application import Application
+from prompt_toolkit.layout.containers import Window, HSplit
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.layout import Layout
+from prompt_toolkit.widgets import Frame, TextArea
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
+from rich.text import Text
+
 app = typer.Typer(help="Query3AI - Intelligent document query system")
 console = Console()
 
@@ -43,6 +52,49 @@ def handle_error(e: Exception):
         )
     else:
         console.print(Panel(str(e), title="Error", border_style="red"))
+
+
+def confirm_with_border(question_str: str) -> bool:
+
+    plain_title = Text.from_markup(question_str).plain.strip()
+    text_area = TextArea(prompt=" [y/n] > ", multiline=False)
+
+    bindings = KeyBindings()
+
+    @bindings.add("enter")
+    def _(event):
+        ans = text_area.text.strip().lower()
+        if ans in ("y", "yes", ""):
+            event.app.exit(result=True)
+        elif ans in ("n", "no"):
+            event.app.exit(result=False)
+        else:
+            text_area.text = ""
+
+    @bindings.add("c-c", "c-d")
+    def _(event):
+        event.app.exit(result=False)
+
+    header = Window(
+        content=FormattedTextControl(text=f"  {plain_title}"),
+        height=len(plain_title.split("\n")),
+        style="class:frame.label",
+    )
+
+    input_frame = Frame(body=HSplit([header, text_area]), style="class:frame")
+
+    app = Application(
+        layout=Layout(input_frame),
+        key_bindings=bindings,
+        style=Style.from_dict(
+            {
+                "frame": "fg:#4499ff",
+                "frame.label": "fg:#888888",
+            }
+        ),
+        full_screen=False,
+    )
+    return app.run()
 
 
 @app.command("ingest")
@@ -189,14 +241,21 @@ def interactive_document_menu(documents: list, question: str) -> str | None:
 
     while True:
         console.clear()
-        console.print(Rule(style="dim"))
-        console.print(f"[bold blue]Active Query:[/bold blue] {question}")
-        console.print("\n[bold cyan]Select Target Document Context:[/bold cyan]")
 
         try:
             term_width = int(os.get_terminal_size().columns)
+            term_height = int(os.get_terminal_size().lines)
         except Exception:
             term_width = 80
+            term_height = 24
+
+        used_lines = 0
+        header = Group(
+            Rule(style="dim"),
+            Text("Select Target Document Context:", style="bold cyan"),
+        )
+        console.print(header)
+        used_lines += 2
 
         lines = []
         for i, (val, desc) in enumerate(options):
@@ -222,18 +281,33 @@ def interactive_document_menu(documents: list, question: str) -> str | None:
             if i < len(lines) - 1:
                 body.append(Text(""))
 
-        console.print(
-            Panel(
-                Group(*body),
-                border_style="cyan",
-                padding=(0, 1),
-                expand=True,
-            )
+        options_panel = Panel(
+            Group(*body),
+            border_style="cyan",
+            padding=(0, 1),
+            expand=True,
         )
+        console.print(options_panel)
+        used_lines += len(lines) * 2 + 1
 
-        console.print(
-            "\n[dim]  ↑↓ to navigate  · Enter to select  · Esc to cancel[/dim]"
+        instruction = Text(
+            "  ↑↓ to navigate  · Enter to select  · Esc to cancel", style="dim"
         )
+        used_lines += 2
+
+        pad_lines = term_height - used_lines - 4
+        if pad_lines > 0:
+            console.print("\n" * (pad_lines - 1))
+
+        console.print(instruction)
+
+        input_panel = Panel(
+            f"[bold blue]Active Query:[/bold blue] {question}",
+            border_style="blue",
+            padding=(0, 1),
+            expand=True,
+        )
+        console.print(input_panel)
 
         key = readchar.readkey()
         if key == readchar.key.UP:
@@ -324,7 +398,7 @@ def ask(
             json_str = json.dumps(preview_data, indent=2)
             console.print(Panel(JSON(json_str), border_style="yellow", expand=True))
 
-            proceed = Confirm.ask(
+            proceed = confirm_with_border(
                 "\n[bold yellow]Do you want to pass this exact compiled context to the Reasoning Model?[/bold yellow]"
             )
             if not proceed:
@@ -345,7 +419,7 @@ def ask(
             response_text = answer(question, context_nodes=filtered_nodes)
 
         console.print("\nAnswer:")
-        console.print(Panel(response_text, border_style="blue"))
+        console.print(Panel(response_text, border_style="green"))
 
         console.print("\nSources:")
         if not filtered_nodes:
@@ -363,7 +437,9 @@ def delete(doc_id: str):
     """
     Removes Document node and all child Section + Chunk nodes from Neo4j.
     """
-    should_delete = Confirm.ask(f"Are you sure you want to delete document '{doc_id}'?")
+    should_delete = confirm_with_border(
+        f"Are you sure you want to delete document '{doc_id}'?"
+    )
     if should_delete:
         try:
             delete_document(doc_id)
@@ -396,11 +472,35 @@ def chat(
             )
             return
 
-        os.system("cls" if os.name == "nt" else "clear")
-        console.print("[bold green]Welcome to Query3AI Interactive Chat![/bold green]")
-        console.print(
-            "[dim]Type '/help' to see all available console commands.[/dim]\n"
-        )
+        def draw_splash():
+            os.system("cls" if os.name == "nt" else "clear")
+            try:
+                term_height = int(os.get_terminal_size().lines)
+            except Exception:
+                term_height = 24
+
+            logo = """
+  ___                       _____    _    ___ 
+ / _ \\ _   _  ___ _ __ _   |__  /   / \\  |_ _|
+| | | | | | |/ _ \\ '__| | | |/ /   / _ \\  | | 
+| |_| | |_| |  __/ |  | |_| / /_  / ___ \\ | | 
+ \\__\\_\\\\__,_|\\___|_|   \\__,/____|/_/   \\_\\___|"""
+
+            console.print("\n")
+            console.print(Text(logo, style="bold #1c39bb", justify="left"))
+            console.print("\n")
+            console.print(
+                Text("Welcome to Query3AI Interactive Chat!", style="bold green")
+            )
+            console.print(
+                Text("Type '/help' to see all available commands.", style="dim")
+            )
+
+            pad_lines = term_height - 18
+            if pad_lines > 0:
+                console.print("\n" * pad_lines, end="")
+
+        draw_splash()
 
         from prompt_toolkit import prompt  # type: ignore
         from prompt_toolkit.keys import Keys  # type: ignore
@@ -422,16 +522,7 @@ def chat(
             ("/exit", "Exit the interactive session."),
         ]
 
-        def print_input_box_top():
-            """Draw the top boundary of the input box."""
-            try:
-                w = int(os.get_terminal_size().columns)
-            except Exception:
-                w = 80
-            console.print(f"[blue]\u256d{'\u2500' * (w - 2)}\u256e[/blue]")
-            console.print(
-                f"[blue]\u2502[/blue]  [dim](press / for slash commands)[/dim]"
-            )
+        pass
 
         def interactive_slash_menu() -> str | None:
             """Show the slash command menu and return selected command or None."""
@@ -441,30 +532,30 @@ def chat(
             while True:
                 # Clear and redraw
                 console.clear()
-                console.print(
-                    "[bold green]Welcome to Query3AI Interactive Chat![/bold green]"
-                )
-                console.print(
-                    "[dim]Type '/help' to see all available console commands.[/dim]\n"
-                )
 
                 try:
                     term_width = int(os.get_terminal_size().columns)
+                    term_height = int(os.get_terminal_size().lines)
                 except Exception:
                     term_width = 80
+                    term_height = 24
 
-                # Draw pseudo input box wrapping the query
-                console.print(f"[blue]\u256d{'\u2500' * (term_width - 2)}\u256e[/blue]")
-                console.print(
-                    f"[blue]\u2502[/blue]  [dim](press / for slash commands)[/dim]"
+                used_lines = 0
+
+                header = Group(
+                    Text("Welcome to Query3AI Interactive Chat!", style="bold green"),
+                    Text(
+                        "Type '/help' to see all available console commands.\n",
+                        style="dim",
+                    ),
                 )
-                console.print(f"[blue]\u2502[/blue] > {query}[blink]_[/blink]")
-                console.print(
-                    f"[blue]\u2570{'\u2500' * (term_width - 2)}\u256f[/blue]\n"
-                )
+                console.print(header)
+                used_lines += 3
 
                 # Filter commands
                 filtered = [c for c in SLASH_COMMANDS if c[0].startswith(query.lower())]
+
+                options_renderable = None
 
                 if filtered:
                     selected = max(0, min(selected, len(filtered) - 1))
@@ -494,24 +585,48 @@ def chat(
                         if i < len(lines) - 1:
                             body.append(Text(""))
 
-                    console.print(Rule(style="dim"))
-                    console.print(
+                    options_renderable = Group(
+                        Rule(style="dim"),
                         Panel(
                             Group(*body),
                             border_style="green",
                             padding=(0, 1),
                             expand=True,
-                        )
+                        ),
                     )
+                    used_lines += len(lines) * 2 + 1 + 2
                 else:
-                    console.print(Rule(style="dim"))
-                    console.print(
-                        f"[dim]No commands match '{query}' — will be sent as regular message.[/dim]"
+                    options_renderable = Group(
+                        Rule(style="dim"),
+                        Text(
+                            f"No commands match '{query}' — will be sent as regular message.",
+                            style="dim",
+                        ),
                     )
+                    used_lines += 2
 
-                console.print(
-                    "\n[dim]  ↑↓ to navigate  · Enter to select  · Esc to cancel  · Type to search[/dim]"
+                if options_renderable:
+                    console.print(options_renderable)
+
+                instruction = Text(
+                    "  ↑↓ to navigate  · Enter to select  · Esc to cancel  · Type to search",
+                    style="dim",
                 )
+                used_lines += 2
+
+                pad_lines = term_height - used_lines - 4
+                if pad_lines > 0:
+                    console.print("\n" * (pad_lines - 1))
+
+                console.print(instruction)
+
+                input_panel = Panel(
+                    f"[dim](press / for slash commands)[/dim]\n> {query}[blink]_[/blink]",
+                    border_style="blue",
+                    padding=(0, 1),
+                    expand=True,
+                )
+                console.print(input_panel)
 
                 key = readchar.readkey()
                 if key == readchar.key.UP:
@@ -539,36 +654,52 @@ def chat(
 
         custom_style = Style.from_dict(
             {
-                "prompt": "#4499ff bold",
-                "bottom-toolbar": "#555555 bg:default",
+                "frame.border": "#4499ff",
+                "frame.label": "#888888",
             }
         )
 
-        def bottom_toolbar():
-            try:
-                w = int(os.get_terminal_size().columns)
-            except Exception:
-                w = 80
-            return HTML(
-                f'<style fg="ansiblue">\u2570{"\u2500" * (w - 2)}\u256f</style>'
-            )
+        text_area = TextArea(prompt=" > ", multiline=False)
 
         bindings = KeyBindings()
 
+        @bindings.add("enter")
+        def _(event):
+            event.app.exit(result=text_area.text)
+
+        @bindings.add("c-c")
+        @bindings.add("c-d")
+        def _(event):
+            event.app.exit(result=None)
+
         @bindings.add("/")
         def _slash_pressed(event):  # type: ignore
-            event.app.exit(result="__SLASH_MENU__")
+            if text_area.text == "":
+                event.app.exit(result="__SLASH_MENU__")
+            else:
+                text_area.buffer.insert_text("/")
+
+        header = Window(
+            content=FormattedTextControl(text="  (press / for slash commands)"),
+            height=1,
+            style="class:frame.label",
+        )
+
+        input_frame = Frame(body=HSplit([header, text_area]), style="class:frame")
+
+        app = Application(
+            layout=Layout(input_frame),
+            key_bindings=bindings,
+            style=custom_style,
+            full_screen=False,
+        )
 
         while True:
             console.print(Rule(style="dim"))
-            print_input_box_top()
+            text_area.text = ""
+
             try:
-                question = prompt(
-                    HTML('<style fg="ansiblue">\u2502</style> > '),
-                    style=custom_style,
-                    bottom_toolbar=bottom_toolbar,
-                    key_bindings=bindings,
-                )
+                question = app.run()
             except (KeyboardInterrupt, EOFError):
                 question = None
 
@@ -594,14 +725,9 @@ def chat(
             if question.strip().startswith("/"):
                 cmd = question.strip().lower()
                 if cmd == "/clear":
-                    os.system("cls" if os.name == "nt" else "clear")
-                    console.print(
-                        "[bold green]Welcome to Query3AI Interactive Chat![/bold green]"
-                    )
-                    console.print(
-                        "[dim]Type '/help' to see all available console commands.[/dim]\n"
-                    )
+                    draw_splash()
                 elif cmd == "/about":
+
                     about_text = (
                         "**Query3AI** is an intelligent, Multi-Agent RAG (Retrieval-Augmented Generation) pipeline.\n\n"
                         "It natively builds hierarchical contexts by indexing document chunks directly into a **Neo4j Graph Database**. "
@@ -609,10 +735,15 @@ def chat(
                         "passing the optimal context securely to a **Reasoning Agent** executing on advanced LLM infrastructure (Groq/Ollama)."
                     )
 
+                    content = Group(
+                        Text("About Query3AI", style="bold cyan"),
+                        Text(""),
+                        Markdown(about_text),
+                    )
+
                     console.print(
                         Panel(
-                            Markdown(about_text),
-                            title="About Query3AI",
+                            content,
                             border_style="cyan",
                         )
                     )
@@ -720,18 +851,12 @@ def chat(
 
                             try:
                                 term_width = int(os.get_terminal_size().columns)
+                                term_height = int(os.get_terminal_size().lines)
                             except Exception:
                                 term_width = 80
+                                term_height = 24
 
-                            console.print(
-                                f"[red]\u256d{'\u2500' * (term_width - 2)}\u256e[/red]"
-                            )
-                            console.print(
-                                f"[red]\u2502[/red] > {query}[blink]_[/blink]"
-                            )
-                            console.print(
-                                f"[red]\u2570{'\u2500' * (term_width - 2)}\u256f[/red]\n"
-                            )
+                            used_lines = 3  # Header
 
                             filtered = [
                                 (d_id, d_title)
@@ -739,6 +864,8 @@ def chat(
                                 if query.lower() in d_id.lower()
                                 or query.lower() in d_title.lower()
                             ]
+
+                            options_renderable = None
 
                             if filtered:
                                 selected = max(0, min(selected, len(filtered) - 1))
@@ -771,24 +898,48 @@ def chat(
                                     if i < len(lines) - 1:
                                         body.append(Text(""))
 
-                                console.print(Rule(style="dim red"))
-                                console.print(
+                                options_renderable = Group(
+                                    Rule(style="dim red"),
                                     Panel(
                                         Group(*body),
                                         border_style="red",
                                         padding=(0, 1),
                                         expand=True,
-                                    )
+                                    ),
                                 )
+                                used_lines += len(lines) * 2 + 1 + 2
                             else:
-                                console.print(Rule(style="dim red"))
-                                console.print(
-                                    f"[dim]No documents match '{query}' — will use exact string.[/dim]"
+                                options_renderable = Group(
+                                    Rule(style="dim red"),
+                                    Text(
+                                        f"No documents match '{query}' — will use exact string.",
+                                        style="dim",
+                                    ),
                                 )
+                                used_lines += 2
 
-                            console.print(
-                                "\n[dim]  ↑↓ to navigate  · Enter to select  · Esc to cancel  · Type to search[/dim]"
+                            if options_renderable:
+                                console.print(options_renderable)
+
+                            instruction = Text(
+                                "  ↑↓ to navigate  · Enter to select  · Esc to cancel  · Type to search",
+                                style="dim",
                             )
+                            used_lines += 2
+
+                            pad_lines = term_height - used_lines - 4
+                            if pad_lines > 0:
+                                console.print("\n" * (pad_lines - 1))
+
+                            console.print(instruction)
+
+                            input_panel = Panel(
+                                f"> {query}[blink]_[/blink]",
+                                border_style="red",
+                                padding=(0, 1),
+                                expand=True,
+                            )
+                            console.print(input_panel)
 
                             key = readchar.readkey()
                             if key == readchar.key.UP:
@@ -823,7 +974,7 @@ def chat(
                         console.print("[dim]Deletion cancelled.[/dim]\n")
                         continue
 
-                    should_delete = Confirm.ask(
+                    should_delete = confirm_with_border(
                         f"[bold red]WARNING: Are you sure you want to permanently delete document '{doc_id}' and all matching chunks from the database?[/bold red]"
                     )
                     if should_delete:
@@ -843,7 +994,7 @@ def chat(
                             "[dim]Deletion efficiently cancelled strictly protecting elements natively.[/dim]\n"
                         )
                 elif cmd == "/cleanupdocs":
-                    should_delete = Confirm.ask(
+                    should_delete = confirm_with_border(
                         f"[bold red]WARNING: Are you sure you want to permanently delete ALL documents from the database?[/bold red]"
                     )
                     if should_delete:
@@ -873,7 +1024,7 @@ def chat(
                                 "[yellow]No valid temporary logs or debug files found in the active directory.[/yellow]\n"
                             )
                         else:
-                            should_del = Confirm.ask(
+                            should_del = confirm_with_border(
                                 f"\n[bold red]Safeguard: Delete {len(files)} temporary logs and debug files from file system?[/bold red]"
                             )
                             if should_del:
@@ -970,7 +1121,7 @@ def chat(
                 json_str = json.dumps(preview_data, indent=2)
                 console.print(Panel(JSON(json_str), border_style="yellow", expand=True))
 
-                proceed = Confirm.ask(
+                proceed = confirm_with_border(
                     "\n[bold yellow]Do you want to pass this exact compiled context to the Reasoning Model?[/bold yellow]"
                 )
                 if not proceed:
