@@ -6,66 +6,83 @@
 
 ## What Is Query3AI?
 
-Query3AI lets you ingest documents (PDF, DOCX, TXT) and query them in natural language through a CLI. It does not flatten your documents into a pile of text chunks like standard AI tools. It reads the structure, builds a knowledge graph, and reasons with three specialised AI agents — one to organise, one to filter, one to answer.
+Query3AI lets you ingest documents (PDF, DOCX, TXT, MD) and query them in natural language. It does not flatten your documents into a pile of text chunks like standard AI tools. It reads the structure, builds a knowledge graph, and reasons with three specialised AI agents — one to organise, one to filter, one to answer.
 
 ```bash
-python main.py ingest report.pdf
-python main.py ask "What were the key findings in section 3?"
+# Install once
+pip install query3ai
 
-# Answer:
-# The key findings relate to...
-#
-# Sources:
-# - Section 3: Market Analysis Summary
+# Initialize workspace (creates ~/.query3ai with config)
+query3ai init
+
+# Start Neo4j
+query3ai start-db
+
+# Ingest documents
+query3ai ingest report.pdf
+
+# Query with interactive chat
+query3ai chat
 ```
 
-No cloud required. No API keys. Runs on a standard laptop.
+No cloud required. No API keys needed for local models. Runs on a standard laptop.
 
 ---
 
-## Documentation
+## Installation
 
-| Document | Description |
-|---|---|
-| [Why Query3AI?](docs/WHY_QUERY3AI.md) | The problem it solves, the philosophy behind it, and what it is not |
-| [Architecture](docs/ARCHITECTURE.md) | The 3-Agent pipeline, graph schema, project structure, and model details |
-| [Use Cases & Case Studies](docs/USE_CASES.md) | Real-world scenarios: legal review, resume screening, developer docs, research |
-| [Advantages & Comparisons](docs/ADVANTAGES.md) | Honest pros/cons and comparison vs RAG, ChatGPT, LlamaIndex |
+### From PyPI (Recommended)
+
+```bash
+pip install query3ai
+```
+
+### From Source
+
+```bash
+git clone https://github.com/vivekvpai/Query3AI.git
+cd Query3AI
+pip install -e .
+```
 
 ---
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. Initialize Query3AI
 
 ```bash
-python -m venv venv
+# Global workspace (default - stores config in ~/.query3ai)
+query3ai init
 
-# Windows
-.\venv\Scripts\activate
-
-# macOS / Linux
-source venv/bin/activate
-
-pip install -r requirements.txt
+# Or local workspace (creates config in current directory)
+query3ai init --local
 ```
+
+This creates:
+- `~/.query3ai/docker-compose.yml` - Neo4j configuration
+- `~/.query3ai/.env` - Environment variables
+- `~/.query3ai/config.json` - Model configuration
 
 ### 2. Start Neo4j
 
-Run Neo4j locally (Desktop or Docker):
+```bash
+query3ai start-db
+```
 
+Or manually with Docker:
 ```bash
 docker run -p 7687:7687 -p 7474:7474 \
-  -e NEO4J_AUTH=neo4j/password \
+  -e NEO4J_AUTH=neo4j/query3ai \
   neo4j:latest
 ```
 
-Default connection in `config/settings.py`:
+Default connection:
 - URI: `bolt://localhost:7687`
 - User: `neo4j`
-- Password: `password`
+- Password: `query3ai`
 
-### 3. Start Ollama and pull models
+### 3. Start Ollama (Optional - for local models)
 
 ```bash
 # Make sure Ollama is running
@@ -77,11 +94,14 @@ ollama pull gemma2:2b       # Decision Agent
 ollama pull deepseek-r1:7b  # Reasoning Agent
 ```
 
-### 4. Ingest and query
+### 4. Ingest and Query
 
 ```bash
-python main.py ingest path/to/document.pdf
-python main.py ask "Your question here"
+# Ingest a document
+query3ai ingest path/to/document.pdf
+
+# Start interactive chat
+query3ai chat
 ```
 
 ---
@@ -90,12 +110,17 @@ python main.py ask "Your question here"
 
 | Command | Description |
 |---|---|
-| `python main.py ingest <file>` | Ingest a PDF, DOCX, or TXT file |
-| `python main.py ask "<question>"` | Query all ingested documents |
-| `python main.py ask "<question>" --cloud` | Query using cloud models |
-| `python main.py list` | List all ingested documents |
-| `python main.py inspect <doc_id>` | Inspect a document's tree structure |
-| `python main.py delete <doc_id>` | Delete a document and all its nodes |
+| `query3ai init` | Initialize workspace in ~/.query3ai |
+| `query3ai init --local` | Initialize workspace in current directory |
+| `query3ai start-db` | Start Neo4j via docker-compose |
+| `query3ai stop-db` | Stop Neo4j |
+| `query3ai ingest <file>` | Ingest a PDF, DOCX, TXT, or MD file |
+| `query3ai ask "<question>"` | Query all ingested documents |
+| `query3ai ask "<question>" --cloud` | Query using cloud models |
+| `query3ai list` | List all ingested documents |
+| `query3ai inspect <doc_id>` | Inspect a document's tree structure |
+| `query3ai delete <doc_id>` | Delete a document and all its nodes |
+| `query3ai chat` | Start interactive TUI chat |
 
 ---
 
@@ -127,54 +152,53 @@ Answer + Source Sections
 
 ## Model Configuration
 
-All model settings live in `config/settings.py`. Query3AI supports three providers — switch with one line:
+Edit `~/.query3ai/config.json` to customize models:
 
-```python
-MODEL_PROVIDER: str = "ollama_local"  # "ollama_local" | "ollama_cloud" | "groq"
+```json
+{
+  "MODEL_PROVIDER": "groq",
+  "TREE_MODEL": "phi3.5:3.8b",
+  "DECISION_MODEL": "gemma2:2b",
+  "REASONING_MODEL": "deepseek-r1:7b"
+}
 ```
 
-| Provider | Privacy | Speed | Cost |
-|---|---|---|---|
-| `ollama_local` | ✅ Fully private | ❌ Slow (CPU) | ✅ Free |
-| `ollama_cloud` | ⚠️ External | ✅ Fast | Varies |
-| `groq` | ⚠️ External | ✅ Fastest | Free tier available |
+| Provider | Description | Privacy | Speed | Cost |
+|---|---|---|---|---|
+| `ollama_local` | Local Ollama models | ✅ Fully private | ❌ Slow (CPU) | ✅ Free |
+| `ollama_cloud` | Cloud Ollama models | ⚠️ External | ✅ Fast | Varies |
+| `groq` | Groq API (recommended) | ⚠️ External | ✅ Fastest | Free tier |
 
-Each agent has its own model slot per provider, all configurable in `settings.py`. For Groq, add your API key to `.env`:
+For Groq, add your API key to `~/.query3ai/.env`:
 
 ```bash
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
-See [Architecture](docs/ARCHITECTURE.md#model-configuration) for the full configuration reference.
-
 ---
 
-## TUI / Chat Interface
+## Interactive Chat
 
-For a conversational interface instead of raw CLI commands:
+Start the TUI chat interface:
 
 ```bash
-# Windows
-start_chat.bat
-
-# macOS / Linux
-./start_chat.sh
+query3ai chat
 ```
 
 ### Slash Commands
 
 | Command | Action |
 |---|---|
-| `/about` | Learn about Query3AI Interactive Chat |
-| `/help` | Display usage and all available commands |
-| `/ingest` | Ingest a new document from a specified file path |
+| `/about` | Learn about Query3AI |
+| `/help` | Display all available commands |
+| `/ingest <path>` | Ingest a new document |
 | `/listdocs` | List all indexed documents |
-| `/list` | List available assets |
-| `/deletedoc` | Remove a specific document from the database |
-| `/cleanupdocs` | Delete all documents from the database |
-| `/cleanupresorce` | Clean up temporary logs and JSON files |
-| `/clear` | Clear chat history |
-| `/exit` | Exit the interactive session |
+| `/list` | Show total sections and chunks |
+| `/deletedoc` | Remove a document from database |
+| `/cleanupdocs` | Delete all documents |
+| `/cleanupresorce` | Clean up temporary files |
+| `/clear` | Clear terminal |
+| `/exit` | Exit chat |
 
 ---
 
@@ -185,7 +209,7 @@ start_chat.bat
 | RAM | 8 GB | 16 GB |
 | CPU | 4 cores | 8 cores |
 | GPU | Not required | Optional |
-| Python | 3.10+ | 3.11+ |
+| Python | 3.8+ | 3.10+ |
 | Storage | 10 GB free | 20 GB free |
 
 ---
@@ -195,12 +219,11 @@ start_chat.bat
 | Layer | Technology |
 |---|---|
 | CLI | Typer + Rich |
-| AI Inference | Ollama |
+| AI Inference | Ollama, Groq |
 | Local Models | phi3.5, gemma2:2b, deepseek-r1:7b |
 | Cloud Models | qwen3.5:cloud, kimi-k2.5:cloud, glm-5:cloud |
 | Graph Database | Neo4j |
-| Document Parsing | PyMuPDF, python-docx, pandas |
-| Data Validation | Pydantic |
+| Document Parsing | PyMuPDF, python-docx |
 
 ---
 
