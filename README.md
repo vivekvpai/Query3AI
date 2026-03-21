@@ -127,19 +127,25 @@ Answer + Source Sections
 
 ## Model Configuration
 
-All models are configured in `config/settings.py`:
+All model settings live in `config/settings.py`. Query3AI supports three providers — switch with one line:
 
 ```python
-# Local models (default)
-TREE_MODEL      = "phi3.5"
-DECISION_MODEL  = "gemma2:2b"
-REASONING_MODEL = "deepseek-r1:7b"
-
-# Cloud models (--cloud flag or USE_CLOUD = True)
-TREE_MODEL_CLOUD      = "qwen3.5:cloud"
-DECISION_MODEL_CLOUD  = "kimi-k2.5:cloud"
-REASONING_MODEL_CLOUD = "glm-5:cloud"
+MODEL_PROVIDER: str = "ollama_local"  # "ollama_local" | "ollama_cloud" | "groq"
 ```
+
+| Provider | Privacy | Speed | Cost |
+|---|---|---|---|
+| `ollama_local` | ✅ Fully private | ❌ Slow (CPU) | ✅ Free |
+| `ollama_cloud` | ⚠️ External | ✅ Fast | Varies |
+| `groq` | ⚠️ External | ✅ Fastest | Free tier available |
+
+Each agent has its own model slot per provider, all configurable in `settings.py`. For Groq, add your API key to `.env`:
+
+```bash
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+See [Architecture](docs/ARCHITECTURE.md#model-configuration) for the full configuration reference.
 
 ---
 
