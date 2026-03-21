@@ -1,32 +1,47 @@
 import os
+import json
 from dotenv import load_dotenv
+from query3ai.config.paths import ENV_PATH, CONFIG_PATH
 
-load_dotenv()
+if ENV_PATH.exists():
+    load_dotenv(ENV_PATH)
+else:
+    load_dotenv()
 
+def load_config() -> dict:
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+_config = load_config()
 
 class Settings:
-    CHUNK_SIZE: int = int(os.getenv("QUERY3AI_CHUNK_SIZE", "500"))
+    CHUNK_SIZE: int = int(_config.get("QUERY3AI_CHUNK_SIZE", os.getenv("QUERY3AI_CHUNK_SIZE", "500")))
 
     # Model Provider Options: "ollama_local", "ollama_cloud", "groq"
-    MODEL_PROVIDER: str = "groq"
+    MODEL_PROVIDER: str = _config.get("MODEL_PROVIDER", "groq")
 
-    TREE_MODEL: str = "phi3.5:3.8b"
-    DECISION_MODEL: str = "gemma2:2b"
-    REASONING_MODEL: str = "deepseek-r1:7b"
+    TREE_MODEL: str = _config.get("TREE_MODEL", "phi3.5:3.8b")
+    DECISION_MODEL: str = _config.get("DECISION_MODEL", "gemma2:2b")
+    REASONING_MODEL: str = _config.get("REASONING_MODEL", "deepseek-r1:7b")
 
-    CLOUD_TREE_MODEL: str = "qwen3.5:cloud"
-    CLOUD_DECISION_MODEL: str = "kimi-k2.5:cloud"
-    CLOUD_REASONING_MODEL: str = "glm-5:cloud"
+    CLOUD_TREE_MODEL: str = _config.get("CLOUD_TREE_MODEL", "qwen3.5:cloud")
+    CLOUD_DECISION_MODEL: str = _config.get("CLOUD_DECISION_MODEL", "kimi-k2.5:cloud")
+    CLOUD_REASONING_MODEL: str = _config.get("CLOUD_REASONING_MODEL", "glm-5:cloud")
 
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
-    GROQ_TREE_MODEL: str = "llama-3.3-70b-versatile"
-    GROQ_DECISION_MODEL: str = "moonshotai/kimi-k2-instruct"
-    GROQ_REASONING_MODEL: str = "qwen/qwen3-32b"
+    GROQ_TREE_MODEL: str = _config.get("GROQ_TREE_MODEL", "llama-3.3-70b-versatile")
+    GROQ_DECISION_MODEL: str = _config.get("GROQ_DECISION_MODEL", "moonshotai/kimi-k2-instruct")
+    GROQ_REASONING_MODEL: str = _config.get("GROQ_REASONING_MODEL", "qwen/qwen3-32b")
 
-    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "")
+    NEO4J_URI: str = _config.get("NEO4J_URI", os.getenv("NEO4J_URI", "bolt://localhost:7687"))
+    NEO4J_USER: str = _config.get("NEO4J_USER", os.getenv("NEO4J_USER", "neo4j"))
+    NEO4J_PASSWORD: str = _config.get("NEO4J_PASSWORD", os.getenv("NEO4J_PASSWORD", "query3ai"))
 
     # System Prompts for the 3 Agents
     TREE_SYSTEM_PROMPT: str = """

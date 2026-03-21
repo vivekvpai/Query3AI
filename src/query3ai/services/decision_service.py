@@ -4,6 +4,7 @@ import datetime
 import ollama  # type: ignore
 from groq import Groq  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
+from query3ai.config.paths import TEMP_DIR  # type: ignore
 
 
 def filter_nodes(question: str, nodes: list) -> list:
@@ -12,11 +13,10 @@ def filter_nodes(question: str, nodes: list) -> list:
 
     yes_nodes = []
 
-    # Create temp directory
-    temp_dir = os.path.join(os.getcwd(), "temp_output")
-    os.makedirs(temp_dir, exist_ok=True)
+    # Ensure global temp directory exists
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    temp_file = os.path.join(temp_dir, f"related_nodes_{timestamp}.json")
+    temp_file = TEMP_DIR / f"related_nodes_{timestamp}.json"
 
     debug_logs = []
 
@@ -94,7 +94,8 @@ def filter_nodes(question: str, nodes: list) -> list:
 
     # Write debug file once at the end
     if debug_logs:
-        with open(os.path.join(temp_dir, "debug.txt"), "a", encoding="utf-8") as df:
+        debug_file = TEMP_DIR / "debug.txt"
+        with open(debug_file, "a", encoding="utf-8") as df:
             df.write("".join(debug_logs))
 
     # Write temp file once at the end

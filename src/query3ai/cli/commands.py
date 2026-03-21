@@ -20,6 +20,7 @@ from query3ai.services.decision_service import filter_nodes  # type: ignore
 from query3ai.services.graph_service import store_tree, get_nodes, get_all_nodes, delete_document  # type: ignore
 from query3ai.db.neo4j_client import neo4j_client  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
+from query3ai.config.paths import TEMP_DIR  # type: ignore
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.layout.containers import Window, HSplit
@@ -468,9 +469,9 @@ def chat(
         all_section_nodes = get_all_nodes()
         if not all_section_nodes:
             console.print(
-                "[yellow]No documents ingested yet. Please run 'ingest' first.[/yellow]"
+                "[yellow]Note: No documents ingested yet. You can use /ingest within the chat to add them.[/yellow]"
             )
-            return
+            all_section_nodes = []
 
         def draw_splash():
             os.system("cls" if os.name == "nt" else "clear")
@@ -515,6 +516,7 @@ def chat(
             ("/ingest", "Ingest a new document from a specified file path."),
             ("/listdocs", "List indexed documentation."),
             ("/list", "List available assets."),
+            ("/listpreresource", "List the number of temporary JSON files created."),
             ("/deletedoc", "Remove a specific document from the database."),
             ("/cleanupdocs", "Delete all documents from the database."),
             ("/cleanupresorce", "Clean up temporary logs and JSON files."),
@@ -1011,17 +1013,16 @@ def chat(
                             "[dim]Deletion efficiently cancelled strictly protecting elements natively.[/dim]\n"
                         )
                 elif cmd == "/cleanupresorce":
-                    temp_dir = os.path.join(os.getcwd(), "temp_output")
-                    if os.path.exists(temp_dir):
+                    if TEMP_DIR.exists():
                         files = [
                             f
-                            for f in os.listdir(temp_dir)
+                            for f in os.listdir(TEMP_DIR)
                             if (f.startswith("related_nodes_") and f.endswith(".json"))
                             or (f.startswith("debug") and f.endswith(".txt"))
                         ]
                         if not files:
                             console.print(
-                                "[yellow]No valid temporary logs or debug files found in the active directory.[/yellow]\n"
+                                f"[yellow]No valid temporary logs or debug files found in {TEMP_DIR}.[/yellow]\n"
                             )
                         else:
                             should_del = confirm_with_border(
@@ -1030,7 +1031,7 @@ def chat(
                             if should_del:
                                 try:
                                     for f in files:
-                                        os.remove(os.path.join(temp_dir, f))
+                                        (TEMP_DIR / f).unlink()
                                     console.print(
                                         f"[bold green]Successfully garbage collected {len(files)} temporary files![/bold green]\n"
                                     )
@@ -1045,6 +1046,21 @@ def chat(
                     else:
                         console.print(
                             "[dim]No temporary directory formally initialized yet.[/dim]\n"
+                        )
+                elif cmd == "/listpreresource":
+                    if TEMP_DIR.exists():
+                        files = [
+                            f
+                            for f in os.listdir(TEMP_DIR)
+                            if (f.startswith("related_nodes_") and f.endswith(".json"))
+                        ]
+                        count = len(files)
+                        console.print(
+                            f"\n[bold cyan]Found {count} temporary resource files in {TEMP_DIR}.[/bold cyan]\n"
+                        )
+                    else:
+                        console.print(
+                            f"\n[yellow]Workspace directory {TEMP_DIR} does not exist yet.[/yellow]\n"
                         )
                 else:
                     console.print(
@@ -1176,14 +1192,14 @@ services:
       - "7474:7474"   # HTTP web interface
       - "7687:7687"   # Bolt protocol
     environment:
-      - NEO4J_AUTH=none
+      - NEO4J_AUTH=neo4j/query3ai
     volumes:
       - ./neo4j_data:/data
 """
     env_content = """# Query3AI Configuration
 # NEO4J_URI=bolt://localhost:7687
 # NEO4J_USER=neo4j
-# NEO4J_PASSWORD=
+# NEO4J_PASSWORD=query3ai
 
 # GROQ_API_KEY=your_key_here
 """
@@ -1215,3 +1231,145 @@ services:
         console.print(Panel(success_msg, title="Setup Complete", border_style="green"))
     except Exception as e:
         handle_error(e)
+
+
+@app.command("init")
+def init():
+    """
+    Initialize a new Query3AI workspace globally in ~/.query3ai.
+    Generates required docker-compose.yml, config.json, and .env files.
+    """
+    import os
+    import json
+    from rich.panel import Panel
+    from query3ai.config.paths import WORKSPACE_DIR, ENV_PATH, COMPOSE_PATH, CONFIG_PATH, ensure_workspace
+    
+    ensure_workspace()
+
+    compose_content = """version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:latest
+    container_name: query3ai_neo4j
+    ports:
+      - "7474:7474"   # HTTP web interface
+      - "7687:7687"   # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/query3ai
+    volumes:
+      - ./neo4j_data:/data
+"""
+    env_content = """# Query3AI Configuration
+# NEO4J_URI=bolt://localhost:7687
+# NEO4J_USER=neo4j
+# NEO4J_PASSWORD=query3ai
+
+# GROQ_API_KEY=your_key_here
+"""
+    
+    default_config = {
+        "MODEL_PROVIDER": "groq",
+        "TREE_MODEL": "phi3.5:3.8b",
+        "DECISION_MODEL": "gemma2:2b",
+        "REASONING_MODEL": "deepseek-r1:7b",
+        "CLOUD_TREE_MODEL": "qwen3.5:cloud",
+        "CLOUD_DECISION_MODEL": "kimi-k2.5:cloud",
+        "CLOUD_REASONING_MODEL": "glm-5:cloud",
+        "GROQ_TREE_MODEL": "llama-3.3-70b-versatile",
+        "GROQ_DECISION_MODEL": "moonshotai/kimi-k2-instruct",
+        "GROQ_REASONING_MODEL": "qwen/qwen3-32b",
+        "QUERY3AI_CHUNK_SIZE": "500",
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "query3ai"
+    }
+
+    try:
+        from query3ai.config.paths import WORKSPACE_DIR, ENV_PATH, COMPOSE_PATH, CONFIG_PATH, ensure_workspace
+        import json
+        
+        ensure_workspace()
+        
+        if not COMPOSE_PATH.exists():
+            with open(COMPOSE_PATH, "w") as f:
+                f.write(compose_content)
+            console.print(f"[green]Created {COMPOSE_PATH}[/green]")
+        else:
+            console.print(f"[yellow]Skipped {COMPOSE_PATH} (already exists)[/yellow]")
+            
+        if not ENV_PATH.exists():
+            with open(ENV_PATH, "w") as f:
+                f.write(env_content)
+            console.print(f"[green]Created {ENV_PATH}[/green]")
+        else:
+            console.print(f"[yellow]Skipped {ENV_PATH} (already exists)[/yellow]")
+            
+        if not CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "w") as f:
+                json.dump(default_config, f, indent=4)
+            console.print(f"[green]Created {CONFIG_PATH}[/green]")
+        else:
+            console.print(f"[yellow]Skipped {CONFIG_PATH} (already exists)[/yellow]")
+
+        success_msg = (
+            f"Global workspace initialized in [bold]{WORKSPACE_DIR}[/bold]!\n\n"
+            "1. Edit [bold cyan]~/.query3ai/.env[/bold cyan] to add your GROQ_API_KEY.\n"
+            "2. Edit [bold cyan]~/.query3ai/config.json[/bold cyan] to change your default models.\n"
+            "3. Run [bold cyan]query3ai start-db[/bold cyan] to start Neo4j.\n"
+            "4. Run [bold cyan]query3ai chat[/bold cyan] to begin from anywhere!"
+        )
+        console.print(Panel(success_msg, title="Setup Complete", border_style="green"))
+    except Exception as e:
+        handle_error(e)
+
+@app.command("start-db")
+def start_db():
+    """
+    Start the global Neo4j database.
+    """
+    import subprocess
+    from query3ai.config.paths import COMPOSE_PATH
+    
+    if not COMPOSE_PATH.exists():
+        console.print("[red]Global workspace not initialized. Please run 'query3ai init' first.[/red]")
+        return
+        
+    try:
+        console.print(f"[cyan]Starting Neo4j via docker-compose from {COMPOSE_PATH}...[/cyan]")
+        subprocess.run(["docker-compose", "-f", str(COMPOSE_PATH), "up", "-d"], check=True)
+        console.print("[green]Neo4j started successfully![/green]")
+    except FileNotFoundError:
+        try:
+            subprocess.run(["docker", "compose", "-f", str(COMPOSE_PATH), "up", "-d"], check=True)
+            console.print("[green]Neo4j started successfully![/green]")
+        except Exception as err:
+            console.print(f"[red]Failed to start database: {err}[/red]")
+            console.print("[yellow]Ensure Docker is running on your machine.[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Failed to start database: {e}[/red]")
+
+@app.command("stop-db")
+def stop_db():
+    """
+    Stop the global Neo4j database.
+    """
+    import subprocess
+    from query3ai.config.paths import COMPOSE_PATH
+    
+    if not COMPOSE_PATH.exists():
+        console.print("[red]Global workspace not initialized. Please run 'query3ai init' first.[/red]")
+        return
+        
+    try:
+        console.print(f"[cyan]Stopping Neo4j via docker-compose from {COMPOSE_PATH}...[/cyan]")
+        subprocess.run(["docker-compose", "-f", str(COMPOSE_PATH), "down"], check=True)
+        console.print("[green]Neo4j stopped successfully![/green]")
+    except FileNotFoundError:
+        try:
+            subprocess.run(["docker", "compose", "-f", str(COMPOSE_PATH), "down"], check=True)
+            console.print("[green]Neo4j stopped successfully![/green]")
+        except Exception as err:
+            console.print(f"[red]Failed to stop database: {err}[/red]")
+    except Exception as e:
+        console.print(f"[red]Failed to stop database: {e}[/red]")
