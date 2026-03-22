@@ -20,8 +20,9 @@ from query3ai.services.decision_service import filter_nodes  # type: ignore
 from query3ai.services.graph_service import store_tree, get_nodes, get_all_nodes, delete_document  # type: ignore
 from query3ai.db.neo4j_client import neo4j_client  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
-from query3ai.config.paths import TEMP_DIR  # type: ignore
+from query3ai.config.paths import TEMP_OUTPUT_DIR  # type: ignore
 
+from prompt_toolkit import HTML
 from prompt_toolkit.application import Application
 from prompt_toolkit.layout.containers import Window, HSplit
 from prompt_toolkit.layout.controls import FormattedTextControl
@@ -36,22 +37,40 @@ console = Console()
 
 def handle_error(e: Exception):
     err_str = str(e).lower()
+    
+    # 1. Ollama-specific errors
     if "connection refused" in err_str and "11434" in err_str:
         console.print(
             "[bold red]API Error:[/bold red] Ollama connection failed. [yellow]Start Ollama with: ollama serve[/yellow]"
         )
+    # 2. Model missing errors
     elif "not found" in err_str and "model" in err_str:
         console.print(
             f"[bold red]Model Error:[/bold red] Model not pulled. [yellow]Run: ollama pull <model_name>[/yellow]\n[dim]Details: {e}[/dim]"
         )
+    # 3. AI Model connection errors (Generic)
+    elif "ai model connection error" in err_str or "api key" in err_str or "unauthorized" in err_str:
+        console.print(
+            f"[bold red]AI Model Error:[/bold red] Could not connect to AI Provider ({settings.MODEL_PROVIDER}).\n"
+            "[yellow]Check your API keys, network connection, or if the service is running.[/yellow]\n"
+            f"[dim]Details: {e}[/dim]"
+        )
+    # 4. Neo4j/DB Errors (Be more specific than just 'connection')
     elif (
-        "serviceunavailable" in err_str or "neo4j" in err_str or "connection" in err_str
+        "serviceunavailable" in err_str or "neo4j" in err_str or "bolt" in err_str or "driver" in err_str
     ):
         console.print(
             f"[bold red]DB Error:[/bold red] Neo4j connection failed. Please verify URI and credentials.\n[dim]Details: {e}[/dim]"
         )
+    # 5. Catch-all for other connection issues not yet classified
+    elif "connection" in err_str:
+        console.print(
+            f"[bold red]Network Error:[/bold red] A connection problem occurred.\n[dim]Details: {e}[/dim]"
+        )
     else:
-        console.print(Panel(str(e), title="Error", border_style="red"))
+        from rich.text import Text
+        error_text = Text(str(e))
+        console.print(Panel(error_text, title="Error", border_style="red"))
 
 
 def confirm_with_border(question_str: str) -> bool:
@@ -110,6 +129,7 @@ def ingest(
     if cloud:
         settings.MODEL_PROVIDER = "ollama_cloud"
 
+    file_path = os.path.abspath(file_path)
     if not os.path.exists(file_path):
         console.print(
             Panel(f"File not found: {file_path}", title="Error", border_style="red")
@@ -229,7 +249,7 @@ def inspect(doc_id: str):
         handle_error(e)
 
 
-def interactive_document_menu(documents: list, question: str) -> str | None:
+def interactive_document_menu(documents: list, question: str, current_selection: str = "0") -> str | None:
     """Show the interactive document selection menu using readchar and up/down arrows."""
     options = [("0", "Search All Documents Globally")]
     for idx, doc in enumerate(documents, start=1):
@@ -237,14 +257,20 @@ def interactive_document_menu(documents: list, question: str) -> str | None:
         title = doc.get("title", doc_id)
         options.append((str(idx), f"{title} ({doc_id})"))
 
+    # Try to find the previous selection to default to it
     selected = 0
+    for i, (val, _) in enumerate(options):
+        if val == current_selection:
+            selected = i
+            break
 
     while True:
         console.clear()
 
         try:
-            term_width = int(os.get_terminal_size().columns)
-            term_height = int(os.get_terminal_size().lines)
+            size = os.get_terminal_size()
+            term_width = int(size.columns)
+            term_height = int(size.lines)
         except Exception:
             term_width = 80
             term_height = 24
@@ -288,16 +314,16 @@ def interactive_document_menu(documents: list, question: str) -> str | None:
             expand=True,
         )
         console.print(options_panel)
-        used_lines += len(lines) * 2 + 1
+        used_lines += (len(lines) * 2 - 1) + 2 # Panels and rules eat space
 
         instruction = Text(
             "  ↑↓ to navigate  · Enter to select  · Esc to cancel", style="dim"
         )
         used_lines += 2
 
-        pad_lines = term_height - used_lines - 4
+        pad_lines = int(term_height) - int(used_lines) - 8
         if pad_lines > 0:
-            console.print("\n" * (pad_lines - 1))
+            console.print("\n" * pad_lines)
 
         console.print(instruction)
 
@@ -311,11 +337,11 @@ def interactive_document_menu(documents: list, question: str) -> str | None:
 
         key = readchar.readkey()
         if key == readchar.key.UP:
-            selected = (selected - 1) % len(options)
+            selected = (int(selected) - 1) % len(options)
         elif key == readchar.key.DOWN:
-            selected = (selected + 1) % len(options)
+            selected = (int(selected) + 1) % len(options)
         elif key in (readchar.key.ENTER, "\r", "\n"):
-            return options[selected][0]
+            return options[int(selected)][0]
         elif key == readchar.key.ESC:
             return None
 
@@ -614,7 +640,7 @@ def chat(
 
                 pad_lines = term_height - used_lines - 4
                 if pad_lines > 0:
-                    console.print("\n" * (pad_lines - 1))
+                    console.print("\n" * pad_lines)
 
                 console.print(instruction)
 
@@ -644,6 +670,128 @@ def chat(
                     query = query[:-1]
                     if not query:
                         return None
+                    selected = 0
+                else:
+                    if isinstance(key, str) and len(key) == 1 and key.isprintable():
+                        query += key
+                        selected = 0
+
+        def interactive_delete_menu(doc_options: list) -> str | None:
+            """Show the interactive document selection menu for deletion."""
+            query = ""
+            selected = 0
+            while True:
+                console.clear()
+                console.print("[bold red]Delete Document Selection[/bold red]")
+                console.print("[dim]Type to filter documents by ID/Title...[/dim]\n")
+
+                try:
+                    size = os.get_terminal_size()
+                    term_width = int(size.columns)
+                    term_height = int(size.lines)
+                except Exception:
+                    term_width = 80
+                    term_height = 24
+
+                used_lines = 3  # Header
+
+                filtered = [
+                    (d_id, d_title)
+                    for d_id, d_title in doc_options
+                    if query.lower() in d_id.lower()
+                    or query.lower() in d_title.lower()
+                ]
+
+                options_renderable = None
+
+                if filtered:
+                    selected = max(0, min(selected, len(filtered) - 1))
+                    lines = []
+                    for i, (d_id, d_title) in enumerate(filtered):
+                        inner_len = int(term_width) - 8
+                        if inner_len < 20:
+                            inner_len = 20
+
+                        entry = f"ID: {d_id}  |  Title: {d_title}"
+                        if len(entry) > inner_len:
+                            entry = entry[: inner_len - 3] + "..."  # type: ignore
+                        padded = entry.ljust(inner_len)
+
+                        if i == selected:
+                            lines.append(
+                                Text(
+                                    f" > {padded}  ",
+                                    style="bold white on #8b0000",
+                                )
+                            )
+                        else:
+                            lines.append(Text(f"   {padded}  ", style="dim white"))
+
+                    body = []
+                    for i, line in enumerate(lines):
+                        body.append(line)
+                        if i < len(lines) - 1:
+                            body.append(Text(""))
+
+                    options_renderable = Group(
+                        Rule(style="dim red"),
+                        Panel(
+                            Group(*body),
+                            border_style="red",
+                            padding=(0, 1),
+                            expand=True,
+                        ),
+                    )
+                    used_lines += len(lines) * 2 + 1 + 2
+                else:
+                    options_renderable = Group(
+                        Rule(style="dim red"),
+                        Text(
+                            f"No documents match '{query}' — will use exact string.",
+                            style="dim",
+                        ),
+                    )
+                    used_lines += 2
+
+                if options_renderable:
+                    console.print(options_renderable)
+
+                instruction = Text(
+                    "  ↑↓ to navigate  · Enter to select  · Esc to cancel  · Type to search",
+                    style="dim",
+                )
+                used_lines += 2
+
+                pad_lines = term_height - used_lines - 4
+                if pad_lines > 0:
+                    console.print("\n" * int(pad_lines))
+
+                console.print(instruction)
+
+                input_panel = Panel(
+                    f"> {query}[blink]_[/blink]",
+                    border_style="red",
+                    padding=(0, 1),
+                    expand=True,
+                )
+                console.print(input_panel)
+
+                key = readchar.readkey()
+                if key == readchar.key.UP:
+                    if filtered:
+                        selected = (selected - 1) % len(filtered)
+                elif key == readchar.key.DOWN:
+                    if filtered:
+                        selected = (selected + 1) % len(filtered)
+                elif key in (readchar.key.ENTER, "\r", "\n"):
+                    if filtered:
+                        return filtered[selected][0]
+                    else:
+                        return query
+                elif key == readchar.key.ESC:
+                    return None
+                elif key in (readchar.key.BACKSPACE, "\x08", "\x7f"):
+                    query = query[:-1]
                     selected = 0
                 else:
                     if isinstance(key, str) and len(key) == 1 and key.isprintable():
@@ -693,8 +841,14 @@ def chat(
         )
 
         while True:
-            console.print(Rule(style="dim"))
+            # 1. Reset input area for the new turn
             text_area.text = ""
+
+            console.print(Rule(style="dim"))
+            
+            # Simple prompt without persistent context
+            prompt_html = HTML(' <style fg="#4499ff">[Query AI]</style>\n > ')
+            text_area.prompt = prompt_html
 
             try:
                 question = app.run()
@@ -721,445 +875,193 @@ def chat(
                 break
 
             if question.strip().startswith("/"):
-                cmd = question.strip().lower()
+                cmd_full = question.strip().lower()
+                cmd = cmd_full.split()[0]
+                
                 if cmd == "/clear":
                     draw_splash()
                 elif cmd == "/about":
-
                     about_text = (
                         "**Query3AI** is an intelligent, Multi-Agent RAG (Retrieval-Augmented Generation) pipeline.\n\n"
                         "It natively builds hierarchical contexts by indexing document chunks directly into a **Neo4j Graph Database**. "
                         "When you ask a question, an internal **Decision Agent** grades relevancy across all documents globally, "
                         "passing the optimal context securely to a **Reasoning Agent** executing on advanced LLM infrastructure (Groq/Ollama)."
                     )
-
-                    content = Group(
-                        Text("About Query3AI", style="bold cyan"),
-                        Text(""),
-                        Markdown(about_text),
-                    )
-
-                    console.print(
-                        Panel(
-                            content,
-                            border_style="cyan",
-                        )
-                    )
+                    content = Group(Text("About Query3AI", style="bold cyan"), Text(""), Markdown(about_text))
+                    console.print(Panel(content, border_style="cyan"))
                 elif cmd == "/help":
-                    help_table = Table(
-                        title="Available Slash Commands", border_style="cyan"
-                    )
+                    help_table = Table(title="Available Slash Commands", border_style="cyan")
                     help_table.add_column("Command", style="magenta")
                     help_table.add_column("Description")
-                    help_table.add_row(
-                        "/about", "Learn about the Query3AI project architecture."
-                    )
+                    help_table.add_row("/select", f"Change the document context (Current: {selection_label})")
+                    help_table.add_row("/about", "Learn about the Query3AI project architecture.")
                     help_table.add_row("/help", "Display this commands menu.")
-                    help_table.add_row(
-                        "/ingest <path>", "Ingest a document from a local file path."
-                    )
-                    help_table.add_row(
-                        "/listdocs",
-                        "List all independent documents currently ingested.",
-                    )
-                    help_table.add_row(
-                        "/list",
-                        "Count total Sections and Chunks natively residing in the Neo4j database.",
-                    )
-                    help_table.add_row(
-                        "/deletedoc",
-                        "Securely wipe a specific document exactly from the Graph.",
-                    )
-                    help_table.add_row(
-                        "/cleanupdocs",
-                        "Delete all documents and clear the database.",
-                    )
-                    help_table.add_row(
-                        "/cleanupresorce",
-                        "Garbage collect accumulated temporary logs and JSON files explicitly.",
-                    )
+                    help_table.add_row("/ingest <path>", "Ingest a document from a local file path.")
+                    help_table.add_row("/listdocs", "List all independent documents currently ingested.")
+                    help_table.add_row("/list", "Count total Sections and Chunks natively residing in the Neo4j database.")
+                    help_table.add_row("/deletedoc", "Securely wipe a specific document exactly from the Graph.")
+                    help_table.add_row("/cleanupdocs", "Delete all documents and clear the database.")
+                    help_table.add_row("/cleanupresorce", "Garbage collect accumulated temporary logs and JSON files explicitly.")
                     help_table.add_row("/clear", "Clear the terminal screen visually.")
                     help_table.add_row("/exit", "Close the chat application safely.")
                     console.print(help_table)
                 elif cmd == "/listdocs":
                     list_docs()
+                elif cmd == "/select":
+                    documents = neo4j_client.get_nodes("Document")
+                    if not documents:
+                        console.print("[yellow]No documents available to select. Ingest some first![/yellow]\n")
+                        continue
+                    
+                    new_selection = interactive_document_menu(documents, "Menu", current_selection)
+                    if new_selection:
+                        current_selection = new_selection
+                        if current_selection == "0":
+                            selection_label = "Search All Documents Globally"
+                        else:
+                            doc_id = doc_map.get(current_selection, "Unknown")
+                            selection_label = doc_id
+                        console.print(f"[green]Context switched to: {selection_label}[/green]\n")
                 elif cmd.startswith("/ingest"):
                     parts = question.strip().split(maxsplit=1)
                     if len(parts) < 2:
                         console.print("[yellow]Usage: /ingest <file_path>[/yellow]\n")
                         continue
-
                     file_path = parts[1].strip().strip("\"'")
                     if not os.path.exists(file_path):
-                        console.print(
-                            f"[red]Error: File not found at '{file_path}'[/red]\n"
-                        )
+                        console.print(f"[red]Error: File not found at '{file_path}'[/red]\n")
                         continue
-
                     try:
                         ingest(file_path)
-                        # Refresh nodes after successful ingestion
                         all_section_nodes = get_all_nodes()
-                        console.print("")  # spacing
+                        console.print("")
                     except Exception as e:
                         console.print(f"[red]Ingestion Error: {e}[/red]\n")
                 elif cmd == "/list":
-                    # Refreshing nodes globally catching newly extracted inputs seamlessly.
                     all_section_nodes = get_all_nodes()
                     if all_section_nodes:
                         total_sections = len(all_section_nodes)
-                        total_chunks = sum(
-                            len(n.get("chunks", [])) for n in all_section_nodes
-                        )
-                        console.print(
-                            f"\n[bold green]Neo4j Database Inventory[/bold green]"
-                        )
-                        console.print(
-                            f"- [cyan]Total Sections:[/cyan] {total_sections}"
-                        )
-                        console.print(
-                            f"- [cyan]Total Chunks:[/cyan]   {total_chunks}\n"
-                        )
+                        total_chunks = sum(len(n.get("chunks", [])) for n in all_section_nodes)
+                        console.print(f"\n[bold green]Neo4j Database Inventory[/bold green]")
+                        console.print(f"- [cyan]Total Sections:[/cyan] {total_sections}")
+                        console.print(f"- [cyan]Total Chunks:[/cyan]   {total_chunks}\n")
                     else:
                         console.print("[yellow]Database is currently empty.[/yellow]")
                 elif cmd == "/deletedoc":
                     documents = neo4j_client.get_nodes("Document")
                     if not documents:
-                        console.print(
-                            "[yellow]No documents available in database to delete.[/yellow]\n"
-                        )
+                        console.print("[yellow]No documents available in database to delete.[/yellow]\n")
                         continue
 
-                    doc_options = [
-                        (doc.get("doc_id", "Unknown"), doc.get("title", "Untitled"))
-                        for doc in documents
-                    ]
-
-                    def interactive_delete_menu() -> str | None:
-                        query = ""
-                        selected = 0
-                        while True:
-                            console.clear()
-                            console.print(
-                                "[bold red]Delete Document Selection[/bold red]"
-                            )
-                            console.print(
-                                "[dim]Type to filter documents by ID/Title...[/dim]\n"
-                            )
-
-                            try:
-                                term_width = int(os.get_terminal_size().columns)
-                                term_height = int(os.get_terminal_size().lines)
-                            except Exception:
-                                term_width = 80
-                                term_height = 24
-
-                            used_lines = 3  # Header
-
-                            filtered = [
-                                (d_id, d_title)
-                                for d_id, d_title in doc_options
-                                if query.lower() in d_id.lower()
-                                or query.lower() in d_title.lower()
-                            ]
-
-                            options_renderable = None
-
-                            if filtered:
-                                selected = max(0, min(selected, len(filtered) - 1))
-                                lines = []
-                                for i, (d_id, d_title) in enumerate(filtered):
-                                    inner_len = int(term_width) - 8
-                                    if inner_len < 20:
-                                        inner_len = 20
-
-                                    entry = f"ID: {d_id}  |  Title: {d_title}"
-                                    if len(entry) > inner_len:
-                                        entry = entry[: inner_len - 3] + "..."  # type: ignore
-                                    padded = entry.ljust(inner_len)
-
-                                    if i == selected:
-                                        lines.append(
-                                            Text(
-                                                f" > {padded}  ",
-                                                style="bold white on #8b0000",
-                                            )
-                                        )
-                                    else:
-                                        lines.append(
-                                            Text(f"   {padded}  ", style="dim white")
-                                        )
-
-                                body = []
-                                for i, line in enumerate(lines):
-                                    body.append(line)
-                                    if i < len(lines) - 1:
-                                        body.append(Text(""))
-
-                                options_renderable = Group(
-                                    Rule(style="dim red"),
-                                    Panel(
-                                        Group(*body),
-                                        border_style="red",
-                                        padding=(0, 1),
-                                        expand=True,
-                                    ),
-                                )
-                                used_lines += len(lines) * 2 + 1 + 2
-                            else:
-                                options_renderable = Group(
-                                    Rule(style="dim red"),
-                                    Text(
-                                        f"No documents match '{query}' — will use exact string.",
-                                        style="dim",
-                                    ),
-                                )
-                                used_lines += 2
-
-                            if options_renderable:
-                                console.print(options_renderable)
-
-                            instruction = Text(
-                                "  ↑↓ to navigate  · Enter to select  · Esc to cancel  · Type to search",
-                                style="dim",
-                            )
-                            used_lines += 2
-
-                            pad_lines = term_height - used_lines - 4
-                            if pad_lines > 0:
-                                console.print("\n" * (pad_lines - 1))
-
-                            console.print(instruction)
-
-                            input_panel = Panel(
-                                f"> {query}[blink]_[/blink]",
-                                border_style="red",
-                                padding=(0, 1),
-                                expand=True,
-                            )
-                            console.print(input_panel)
-
-                            key = readchar.readkey()
-                            if key == readchar.key.UP:
-                                if filtered:
-                                    selected = (selected - 1) % len(filtered)
-                            elif key == readchar.key.DOWN:
-                                if filtered:
-                                    selected = (selected + 1) % len(filtered)
-                            elif key in (readchar.key.ENTER, "\r", "\n"):
-                                if filtered:
-                                    return filtered[selected][0]
-                                else:
-                                    return query
-                            elif key == readchar.key.ESC:
-                                return None
-                            elif key in (readchar.key.BACKSPACE, "\x08", "\x7f"):
-                                query = query[:-1]
-                                selected = 0
-                            else:
-                                if (
-                                    isinstance(key, str)
-                                    and len(key) == 1
-                                    and key.isprintable()
-                                ):
-                                    query += key
-                                    selected = 0
-
-                    doc_id = interactive_delete_menu()
-                    console.clear()
-
-                    if not doc_id or not doc_id.strip():
-                        console.print("[dim]Deletion cancelled.[/dim]\n")
-                        continue
-
-                    should_delete = confirm_with_border(
-                        f"[bold red]WARNING: Are you sure you want to permanently delete document '{doc_id}' and all matching chunks from the database?[/bold red]"
-                    )
-                    if should_delete:
-                        # Refresh node memory explicitly bypassing legacy cached arrays locally!
-
-                        try:
-                            delete_document(doc_id)
-                            console.print(
-                                f"[bold green]Successfully disconnected '{doc_id}' exactly from Neo4j![/bold green]\n"
-                            )
-                            # Refresh node memory explicitly bypassing legacy cached arrays locally!
-                            all_section_nodes = get_all_nodes()
-                        except Exception as e:
-                            console.print(f"[bold red]Delete Error:[/bold red] {e}\n")
-                    else:
-                        console.print(
-                            "[dim]Deletion efficiently cancelled strictly protecting elements natively.[/dim]\n"
-                        )
+                    doc_options = [(doc.get("doc_id", "Unknown"), doc.get("title", "Untitled")) for doc in documents]
+                    doc_id_to_del = interactive_delete_menu(doc_options)
+                    
+                    if doc_id_to_del:
+                        if confirm_with_border(f"Are you sure you want to delete '{doc_id_to_del}'?"):
+                           delete_document(doc_id_to_del)
+                           console.print(f"[green]Deleted {doc_id_to_del}[/green]")
+                           all_section_nodes = get_all_nodes()
                 elif cmd == "/cleanupdocs":
-                    should_delete = confirm_with_border(
-                        f"[bold red]WARNING: Are you sure you want to permanently delete ALL documents from the database?[/bold red]"
-                    )
-                    if should_delete:
-                        try:
-                            neo4j_client.clear_all()
-                            console.print(
-                                f"[bold green]Successfully deleted all documents from Neo4j![/bold green]\n"
-                            )
-                            all_section_nodes = get_all_nodes()
-                        except Exception as e:
-                            console.print(f"[bold red]Delete Error:[/bold red] {e}\n")
+                    if confirm_with_border("Delete ALL documents?"):
+                        neo4j_client.clear_all()
+                        console.print("[green]Database cleared.[/green]")
+                        all_section_nodes = get_all_nodes()
+                elif cmd == "/cleanupresorce" or cmd == "/listpreresource":
+                    from query3ai.config.paths import TEMP_OUTPUT_DIR
+                    if not TEMP_OUTPUT_DIR.exists():
+                        console.print("[yellow]No temporary resource directory found.[/yellow]\n")
+                        continue
+                    
+                    files = list(TEMP_OUTPUT_DIR.glob("*.*"))
+                    if not files:
+                        console.print("[yellow]No temporary resources to clean up.[/yellow]\n")
+                        continue
+
+                    if cmd == "/listpreresource":
+                        console.print(f"[bold cyan]Temporary Resources ({len(files)} files):[/bold cyan]")
+                        for f in files:
+                            console.print(f" - {f.name} ({os.path.getsize(f)} bytes)")
+                        console.print("")
                     else:
-                        console.print(
-                            "[dim]Deletion efficiently cancelled strictly protecting elements natively.[/dim]\n"
-                        )
-                elif cmd == "/cleanupresorce":
-                    if TEMP_DIR.exists():
-                        files = [
-                            f
-                            for f in os.listdir(TEMP_DIR)
-                            if (f.startswith("related_nodes_") and f.endswith(".json"))
-                            or (f.startswith("debug") and f.endswith(".txt"))
-                        ]
-                        if not files:
-                            console.print(
-                                f"[yellow]No valid temporary logs or debug files found in {TEMP_DIR}.[/yellow]\n"
-                            )
-                        else:
-                            should_del = confirm_with_border(
-                                f"\n[bold red]Safeguard: Delete {len(files)} temporary logs and debug files from file system?[/bold red]"
-                            )
-                            if should_del:
+                        if confirm_with_border(f"Delete {len(files)} temporary resource files?"):
+                            for f in files:
                                 try:
-                                    for f in files:
-                                        (TEMP_DIR / f).unlink()
-                                    console.print(
-                                        f"[bold green]Successfully garbage collected {len(files)} temporary files![/bold green]\n"
-                                    )
-                                except Exception as e:
-                                    console.print(
-                                        f"[bold red]Delete Error:[/bold red] {e}\n"
-                                    )
-                            else:
-                                console.print(
-                                    "[dim]File Cleanup explicitly prevented respecting User Safeguard rules.[/dim]\n"
-                                )
-                    else:
-                        console.print(
-                            "[dim]No temporary directory formally initialized yet.[/dim]\n"
-                        )
-                elif cmd == "/listpreresource":
-                    if TEMP_DIR.exists():
-                        files = [
-                            f
-                            for f in os.listdir(TEMP_DIR)
-                            if (f.startswith("related_nodes_") and f.endswith(".json"))
-                        ]
-                        count = len(files)
-                        console.print(
-                            f"\n[bold cyan]Found {count} temporary resource files in {TEMP_DIR}.[/bold cyan]\n"
-                        )
-                    else:
-                        console.print(
-                            f"\n[yellow]Workspace directory {TEMP_DIR} does not exist yet.[/yellow]\n"
-                        )
+                                    os.remove(f)
+                                except Exception:
+                                    pass
+                            console.print(f"[green]Cleaned up {len(files)} files.[/green]\n")
                 else:
-                    console.print(
-                        f"[yellow]Slash command '{cmd}' is recognized but reserved for future functionality![/yellow]\n"
-                    )
+                    console.print(f"[yellow]Slash command '{cmd}' is recognized but reserved for future functionality![/yellow]\n")
                 continue
 
+            # After a non-slash query, ask which document to refer to
             documents = neo4j_client.get_nodes("Document")
             if not documents:
-                console.print("[yellow]No documents available in database.[/yellow]")
-                continue
+                console.print("[yellow]No documents available. Searching all (empty database)...[/yellow]")
+                current_selection = "0" # Global
+            else:
+                current_selection = str(interactive_document_menu(documents, f"Select Context for: '{str(question)[:20]}...'", "0"))
+                if not current_selection:
+                    current_selection = "0" # Assume Global if escaped or error
 
-            console.print("\n[bold cyan]Select Target Document for Query:[/bold cyan]")
-            console.print("[0] Search All Documents Globally")
+            # Prepare target nodes based on persistency
             doc_map = {}
             for idx, doc in enumerate(documents, start=1):
-                doc_id = doc.get("doc_id", f"Doc_{idx}")
-                doc_map[str(idx)] = doc_id
+                doc_map[str(idx)] = doc.get("doc_id", f"Doc_{idx}")
 
-            selection = interactive_document_menu(documents, question)
-
-            if selection is None:
-                console.print("[dim]Selection cancelled. Returning to prompt.[/dim]\n")
-                continue
-
-            if selection == "0":
+            if current_selection == "0":
                 target_nodes = get_all_nodes()
-            elif selection in doc_map:
-                doc_data = get_nodes(doc_map[selection])
+                selection_label = "Search All Documents Globally"
+            elif current_selection in doc_map:
+                doc_id = doc_map[current_selection]
+                doc_data = get_nodes(doc_id)
                 target_nodes = doc_data.get("sections", []) if doc_data else []
+                selection_label = doc_id
             else:
-                console.print("[red]Invalid selection! Cancelling execution.[/red]")
-                continue
-
-            # Clear UI to restore normal chat formatting after escaping the fullscreen menu
-            console.clear()
-            console.print(f"[bold blue]Active Query:[/bold blue] {question}\n")
+                target_nodes = []
+                selection_label = "Unknown"
 
             if not target_nodes:
                 console.print("[yellow]No context data found on this target.[/yellow]")
                 continue
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                transient=True,
-            ) as progress:
-                task = progress.add_task(
-                    description=f"Decision Agent: Searching context with {settings.get_active_decision_model()}...",
-                    total=None,
-                )
+            console.print(f"[dim]Processing with context: {selection_label}[/dim]")
 
+            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
+                progress.add_task(description=f"Decision Agent: Searching context...", total=None)
                 try:
-                    # Decision Agent
                     filtered_nodes = filter_nodes(question, target_nodes)
                 except Exception as e:
                     console.print(f"\n[bold red]Query Error:[/bold red] {e}")
                     continue
 
             if filtered_nodes:
-                preview_data = [
-                    {
-                        "node_id": n.get("node_id"),
-                        "heading": n.get("heading"),
-                        "summary": n.get("summary"),
-                        "document_name": n.get(
-                            "doc_title", n.get("document_name", "Unknown")
-                        ),
-                        "document_id": n.get("doc_id", "Unknown"),
-                    }
-                    for n in filtered_nodes
-                ]
+                preview_data = [{
+                    "node_id": n.get("node_id"),
+                    "heading": n.get("heading"),
+                    "summary": n.get("summary"),
+                    "document_name": n.get("doc_title", n.get("document_name", "Unknown")),
+                    "document_id": n.get("doc_id", "Unknown"),
+                } for n in filtered_nodes]
+                
                 console.print("\n[cyan]Decision Agent Extracted Context:[/cyan]")
                 json_str = json.dumps(preview_data, indent=2)
                 console.print(Panel(JSON(json_str), border_style="yellow", expand=True))
 
-                proceed = confirm_with_border(
-                    "\n[bold yellow]Do you want to pass this exact compiled context to the Reasoning Model?[/bold yellow]"
-                )
+                proceed = confirm_with_border("\n[bold yellow]Pass this context to Reasoning Model?[/bold yellow]")
                 if not proceed:
-                    console.print("[dim]Query cancelled. Returning to prompt.[/dim]\n")
+                    console.print("[dim]Query cancelled.[/dim]\n")
                     continue
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                transient=True,
-            ) as progress:
-                task = progress.add_task(
-                    description=f"Reasoning Agent: Thinking with {settings.get_active_reasoning_model()}...",
-                    total=None,
-                )
-
-                # Reasoning Agent
+            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
+                progress.add_task(description=f"Reasoning Agent: Thinking...", total=None)
                 response_text = answer(question, context_nodes=filtered_nodes)
 
             md_content = Markdown(response_text)
             console.print(Panel(md_content, border_style="green", expand=True))
 
             if filtered_nodes:
-                sources_str = ", ".join(
-                    [n.get("heading", "Untitled") for n in filtered_nodes[:3]]
-                )
+                sources_str = ", ".join([n.get("heading", "Untitled") for n in filtered_nodes[:3]])
                 if len(filtered_nodes) > 3:
                     sources_str += f" (+{len(filtered_nodes)-3} more)"
                 console.print(f"[dim]Sources: {sources_str}[/dim]\n")
@@ -1182,12 +1084,11 @@ def init(
     import os
     import json
     from rich.panel import Panel
-    from query3ai.config.paths import WORKSPACE_DIR, ENV_PATH, COMPOSE_PATH, CONFIG_PATH, ensure_workspace
+    from query3ai.config.paths import WORKSPACE_DIR, COMPOSE_PATH, CONFIG_PATH, ensure_workspace
 
     if local:
         cwd = os.getcwd()
         compose_path = os.path.join(cwd, "docker-compose.yml")
-        env_path = os.path.join(cwd, ".env")
         config_path = os.path.join(cwd, "config.json")
         
         compose_content = """version: '3.8'
@@ -1204,13 +1105,6 @@ services:
     volumes:
       - ./neo4j_data:/data
 """
-        env_content = """# Query3AI Configuration
-# NEO4J_URI=bolt://localhost:7687
-# NEO4J_USER=neo4j
-# NEO4J_PASSWORD=query3ai
-
-# GROQ_API_KEY=your_key_here
-"""
         default_config = {
             "MODEL_PROVIDER": "groq",
             "TREE_MODEL": "phi3.5:3.8b",
@@ -1220,6 +1114,13 @@ services:
             "GROQ_DECISION_MODEL": "moonshotai/kimi-k2-instruct",
             "GROQ_REASONING_MODEL": "qwen/qwen3-32b",
             "QUERY3AI_CHUNK_SIZE": "500",
+            "GROQ_API_KEY": "",
+            "NEO4J_URI": "bolt://localhost:7687",
+            "NEO4J_USER": "neo4j",
+            "NEO4J_PASSWORD": "query3ai",
+            "TREE_SYSTEM_PROMPT": "You are a document structure extractor.\\nOutput ONLY valid JSON. No explanation. No markdown.\\n\\nFormat:\\n{\"title\":\"...\",\"summary\":\"1-2 sentence overview\",\"keywords\":[\"k1\",\"k2\",\"k3\"],\"sections\":[{\"heading\":\"...\",\"summary\":\"1-2 sentences\",\"keywords\":[\"k1\",\"k2\"],\"chunks\":[{\"chunk_index\":0,\"summary\":\"1 sentence\",\"keywords\":[\"k1\",\"k2\"]}]}]}\\n\\nRules:\\n- summary: factual, dense, no filler words\\n- keywords: specific nouns/concepts only, no generic words like \"document\" or \"section\"\\n- Every chunk must appear in exactly one section",
+            "DECISION_SYSTEM_PROMPT": "You are a relevance filter.\\nReply ONLY with YES or NO.\\nYES if the section likely contains the answer or closely related details.\\nNO if completely unrelated.",
+            "REASONING_SYSTEM_PROMPT": "You are a precise document assistant.\\nAnswer strictly from the provided context.\\nIf the answer is not in the context, say \"Not found in document.\"\\nBe concise. No preamble."
         }
 
         try:
@@ -1229,13 +1130,6 @@ services:
                 console.print(f"[green]Created {compose_path}[/green]")
             else:
                 console.print(f"[yellow]Skipped {compose_path} (already exists)[/yellow]")
-                
-            if not os.path.exists(env_path):
-                with open(env_path, "w") as f:
-                    f.write(env_content)
-                console.print(f"[green]Created {env_path}[/green]")
-            else:
-                console.print(f"[yellow]Skipped {env_path} (already exists)[/yellow]")
                 
             if not os.path.exists(config_path):
                 with open(config_path, "w") as f:
@@ -1247,7 +1141,7 @@ services:
             success_msg = (
                 "Workspace initialized in current directory!\n\n"
                 "1. Run [bold cyan]docker-compose up -d[/bold cyan] to start Neo4j.\n"
-                "2. Edit [bold cyan].env[/bold cyan] to add your GROQ_API_KEY.\n"
+                "2. Edit [bold cyan]config.json[/bold cyan] to customize models, prompts, and API keys.\n"
                 "3. Run [bold cyan]query3ai chat[/bold cyan] to begin."
             )
             console.print(Panel(success_msg, title="Setup Complete", border_style="green"))
@@ -1271,13 +1165,6 @@ services:
     volumes:
       - ./neo4j_data:/data
 """
-    env_content = """# Query3AI Configuration
-# NEO4J_URI=bolt://localhost:7687
-# NEO4J_USER=neo4j
-# NEO4J_PASSWORD=query3ai
-
-# GROQ_API_KEY=your_key_here
-"""
 
     default_config = {
         "MODEL_PROVIDER": "groq",
@@ -1291,9 +1178,13 @@ services:
         "GROQ_DECISION_MODEL": "moonshotai/kimi-k2-instruct",
         "GROQ_REASONING_MODEL": "qwen/qwen3-32b",
         "QUERY3AI_CHUNK_SIZE": "500",
+        "GROQ_API_KEY": "",
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",
-        "NEO4J_PASSWORD": "query3ai"
+        "NEO4J_PASSWORD": "query3ai",
+        "TREE_SYSTEM_PROMPT": "You are a document structure extractor.\\nOutput ONLY valid JSON. No explanation. No markdown.\\n\\nFormat:\\n{\"title\":\"...\",\"summary\":\"1-2 sentence overview\",\"keywords\":[\"k1\",\"k2\",\"k3\"],\"sections\":[{\"heading\":\"...\",\"summary\":\"1-2 sentences\",\"keywords\":[\"k1\",\"k2\"],\"chunks\":[{\"chunk_index\":0,\"summary\":\"1 sentence\",\"keywords\":[\"k1\",\"k2\"]}]}]}\\n\\nRules:\\n- summary: factual, dense, no filler words\\n- keywords: specific nouns/concepts only, no generic words like \"document\" or \"section\"\\n- Every chunk must appear in exactly one section",
+        "DECISION_SYSTEM_PROMPT": "You are a relevance filter.\\nReply ONLY with YES or NO.\\nYES if the section likely contains the answer or closely related details.\\nNO if completely unrelated.",
+        "REASONING_SYSTEM_PROMPT": "You are a precise document assistant.\\nAnswer strictly from the provided context.\\nIf the answer is not in the context, say \"Not found in document.\"\\nBe concise. No preamble."
     }
 
     try:
@@ -1304,13 +1195,6 @@ services:
         else:
             console.print(f"[yellow]Skipped {COMPOSE_PATH} (already exists)[/yellow]")
             
-        if not ENV_PATH.exists():
-            with open(ENV_PATH, "w") as f:
-                f.write(env_content)
-            console.print(f"[green]Created {ENV_PATH}[/green]")
-        else:
-            console.print(f"[yellow]Skipped {ENV_PATH} (already exists)[/yellow]")
-            
         if not CONFIG_PATH.exists():
             with open(CONFIG_PATH, "w") as f:
                 json.dump(default_config, f, indent=4)
@@ -1320,10 +1204,9 @@ services:
 
         success_msg = (
             f"Global workspace initialized in [bold]{WORKSPACE_DIR}[/bold]!\n\n"
-            "1. Edit [bold cyan]~/.query3ai/.env[/bold cyan] to add your GROQ_API_KEY.\n"
-            "2. Edit [bold cyan]~/.query3ai/config.json[/bold cyan] to change your default models.\n"
-            "3. Run [bold cyan]query3ai start-db[/bold cyan] to start Neo4j.\n"
-            "4. Run [bold cyan]query3ai chat[/bold cyan] to begin from anywhere!"
+            "1. Edit [bold cyan]~/.query3ai/config.json[/bold cyan] to customize models, prompts, and API keys.\n"
+            "2. Run [bold cyan]query3ai start-db[/bold cyan] to start Neo4j.\n"
+            "3. Run [bold cyan]query3ai chat[/bold cyan] to begin from anywhere!"
         )
         console.print(Panel(success_msg, title="Setup Complete", border_style="green"))
     except Exception as e:

@@ -3,9 +3,11 @@ import json
 import datetime
 import ollama  # type: ignore
 from groq import Groq  # type: ignore
+from rich.console import Console  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
-from query3ai.config.paths import TEMP_DIR  # type: ignore
+from query3ai.config.paths import TEMP_OUTPUT_DIR  # type: ignore
 
+console = Console()
 
 def filter_nodes(question: str, nodes: list) -> list:
     """Uses Ollama or Groq to check each section's relevance individually (YES/NO)."""
@@ -14,12 +16,15 @@ def filter_nodes(question: str, nodes: list) -> list:
     yes_nodes = []
 
     # Ensure global temp directory exists
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    TEMP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    temp_file = TEMP_DIR / f"related_nodes_{timestamp}.json"
+    temp_file = TEMP_OUTPUT_DIR / f"related_nodes_{timestamp}.json"
 
     debug_logs = []
 
+    if len(nodes) > 15:
+        console.print(f"  [dim]Global Context: Batch evaluating {len(nodes)} sections sequentially...[/dim]")
+    
     for node in nodes:
         node_id = node.get("node_id", "")
         heading = node.get("heading", "")
@@ -88,13 +93,13 @@ def filter_nodes(question: str, nodes: list) -> list:
             if any(
                 keyword in err_msg for keyword in ["rate limit", "context window", "too large"]
             ):
-                print(f"Warning: Decision Agent API boundary triggered for node {node_id}")
+                console.print(f"[yellow]Warning: Decision Agent API boundary triggered for node {node_id}[/yellow]")
             else:
-                print(f"Warning: Error evaluating node {node_id}: {e}")
+                console.print(f"[red]Warning: Error evaluating node {node_id}: {e}[/red]")
 
     # Write debug file once at the end
     if debug_logs:
-        debug_file = TEMP_DIR / "debug.txt"
+        debug_file = TEMP_OUTPUT_DIR / "debug.txt"
         with open(debug_file, "a", encoding="utf-8") as df:
             df.write("".join(debug_logs))
 

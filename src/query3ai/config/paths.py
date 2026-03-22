@@ -4,11 +4,10 @@ from pathlib import Path
 WORKSPACE_DIR = Path.home() / ".query3ai"
 
 # Core configurations inside workspace
-ENV_PATH = WORKSPACE_DIR / ".env"
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
 COMPOSE_PATH = WORKSPACE_DIR / "docker-compose.yml"
 DATA_DIR = WORKSPACE_DIR / "neo4j_data"
-TEMP_DIR = WORKSPACE_DIR / "temp_output"
+TEMP_OUTPUT_DIR = WORKSPACE_DIR / "temp_output"
 
 def ensure_workspace():
     """Ensure the ~/.query3ai directory exists."""
