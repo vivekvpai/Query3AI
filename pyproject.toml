@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "query3ai"
 version = "0.1.2"
 authors = [
-  { name="Query3AI Author", email="[EMAIL_ADDRESS]" },
+  { name="Query3AI Author", email="paivivek002@gmail.com" },
 ]
 description = "Query3AI: A multi-agent system combining document structure extraction, relevance filtering, and reasoning with Neo4j."
 readme = "README.md"
