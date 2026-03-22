@@ -8,15 +8,11 @@ def build_tree(chunks: list[str]) -> dict:
     """Uses Ollama or Groq to form a hierarchical tree from chunks."""
     system_prompt = settings.TREE_SYSTEM_PROMPT.strip()
 
-    # Optimized string building
-    chunk_strings = [f"\n--- Chunk {idx} ---\n{chunk}\n" for idx, chunk in enumerate(chunks)]
+    # Format chunks to match system prompt examples
+    chunk_strings = [f'Input chunk_index {idx}: "{chunk}"\n' for idx, chunk in enumerate(chunks)]
     chunk_text = "".join(chunk_strings)
 
-    user_prompt = (
-        "Given these document chunks, organise them into a hierarchical tree structure.\n"
-        "Return JSON only.\n"
-        f"{chunk_text}"
-    )
+    user_prompt = chunk_text
 
     try:
         if settings.MODEL_PROVIDER == "groq":

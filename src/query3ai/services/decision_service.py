@@ -45,12 +45,10 @@ def filter_nodes(question: str, nodes: list) -> list:
         )
 
         user_prompt = (
-            f"Question: '{question}'\n\n"
-            f"Section Heading: {heading}\n"
-            f"Section Summary: {summary}\n"
-            f"Section Keywords: {keywords_str}\n"
-            f"Section Content Details:\n{chunk_texts}\n\n"
-            "Based on the content details, is this section relevant? Reply ONLY YES or NO."
+            f"Question: \"{question}\"\n"
+            f"Section heading: \"{heading}\"\n"
+            f"Section summary: \"{summary}\"\n"
+            f"Section keywords: \"{keywords_str}\"\n\nContent details:\n{chunk_texts}"
         )
 
         try:
