@@ -1,5 +1,7 @@
 import os
 import json
+import re
+from pathlib import Path
 import typer  # type: ignore
 from rich.console import Console, Group  # type: ignore
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn  # type: ignore
@@ -558,6 +560,7 @@ def chat(
         SLASH_COMMANDS = [
             ("/about", "Learn about Query3AI Interactive Chat."),
             ("/help", "Display usage and commands."),
+            ("/version", "Show currently installed version from pyproject.toml."),
             ("/ingest", "Ingest a new document from a specified file path."),
             ("/listdocs", "List indexed documentation."),
             ("/list", "List available assets."),
@@ -946,8 +949,11 @@ def chat(
                         "Garbage collect accumulated temporary logs and JSON files explicitly.",
                     )
                     help_table.add_row("/clear", "Clear the terminal screen visually.")
+                    help_table.add_row("/version", "Show the version from pyproject.toml.")
                     help_table.add_row("/exit", "Close the chat application safely.")
                     console.print(help_table)
+                elif cmd == "/version":
+                    version()
                 elif cmd == "/listdocs":
                     list_docs()
                 elif cmd.startswith("/ingest"):
@@ -1360,3 +1366,44 @@ def stop_db():
             console.print(f"[red]Failed to stop database: {err}[/red]")
     except Exception as e:
         console.print(f"[red]Failed to stop database: {e}[/red]")
+
+
+@app.command("version")
+def version():
+    """Show the currently installed version of Query3AI (retrieved from pyproject.toml)."""
+    try:
+        # Find pyproject.toml relative to this file:
+        # src/query3ai/cli/commands.py -> ../../../pyproject.toml
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parents[3]
+        toml_path = project_root / "pyproject.toml"
+
+        if not toml_path.exists():
+            console.print(
+                "[yellow]Warning: pyproject.toml not found in repository root. Is it installed in editable mode?[/yellow]"
+            )
+            # Fallback to metadata
+            import importlib.metadata
+
+            try:
+                ver = importlib.metadata.version("query3ai")
+                console.print(
+                    f"Query3AI version: [bold cyan]{ver}[/bold cyan] (via metadata)"
+                )
+                return
+            except Exception:
+                console.print("[red]Error: Could not determine version.[/red]")
+                return
+
+        with open(toml_path, "r") as f:
+            content = f.read()
+            match = re.search(r'version\s*=\s*"([^"]+)"', content)
+            if match:
+                console.print(f"Query3AI version: [bold cyan]{match.group(1)}[/bold cyan]")
+            else:
+                console.print(
+                    "[red]Error: Could not find version string in pyproject.toml.[/red]"
+                )
+
+    except Exception as e:
+        console.print(f"[red]Error reading version: {e}[/red]")
