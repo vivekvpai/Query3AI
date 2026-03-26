@@ -9,6 +9,31 @@ from query3ai.config.paths import TEMP_OUTPUT_DIR  # type: ignore
 
 console = Console()
 
+
+def _call_llm(messages: list[dict], temperature: float = 0.0) -> str:
+    """
+    Thin LLM dispatch helper shared across this module.
+    Routes to Groq or Ollama based on MODEL_PROVIDER.
+    Returns the raw text content from the model response.
+    """
+    if settings.MODEL_PROVIDER == "groq":
+        client = Groq(api_key=settings.GROQ_API_KEY)
+        response = client.chat.completions.create(
+            model=settings.GROQ_DECISION_MODEL,
+            messages=messages,
+            temperature=temperature,
+        )
+        return response.choices[0].message.content.strip().upper()
+
+    model = (
+        settings.CLOUD_DECISION_MODEL
+        if settings.MODEL_PROVIDER == "ollama_cloud"
+        else settings.DECISION_MODEL
+    )
+    response = ollama.chat(model=model, messages=messages)
+    return response["message"]["content"].strip().upper()
+
+
 def filter_nodes(question: str, nodes: list) -> list:
     """Uses Ollama or Groq to check each section's relevance individually (YES/NO)."""
     system_prompt = settings.DECISION_SYSTEM_PROMPT.strip()
@@ -24,7 +49,7 @@ def filter_nodes(question: str, nodes: list) -> list:
 
     if len(nodes) > 15:
         console.print(f"  [dim]Global Context: Batch evaluating {len(nodes)} sections sequentially...[/dim]")
-    
+
     for node in nodes:
         node_id = node.get("node_id", "")
         heading = node.get("heading", "")
@@ -51,37 +76,17 @@ def filter_nodes(question: str, nodes: list) -> list:
             f"Section keywords: \"{keywords_str}\"\n\nContent details:\n{chunk_texts}"
         )
 
-        try:
-            if settings.MODEL_PROVIDER == "groq":
-                client = Groq(api_key=settings.GROQ_API_KEY)
-                response = client.chat.completions.create(
-                    model=settings.GROQ_DECISION_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.0,
-                )
-                raw = response.choices[0].message.content.strip().upper()
-            else:
-                model = (
-                    settings.CLOUD_DECISION_MODEL
-                    if settings.MODEL_PROVIDER == "ollama_cloud"
-                    else settings.DECISION_MODEL
-                )
-                response = ollama.chat(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                )
-                raw = response["message"]["content"].strip().upper()
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
 
+        try:
+            raw = _call_llm(messages, temperature=0.0)
             debug_logs.append(f"Query: {question}\nNode {heading} response: {raw}\n---\n")
 
             if "YES" in raw:
-                # Restrict to maximum 5 chunks (leaf nodes) from parent Section exactly as requested
+                # Restrict to maximum 5 chunks (leaf nodes) from parent Section
                 chunks = node.get("chunks", [])
                 node["chunks"] = chunks[:5]
                 yes_nodes.append(node)

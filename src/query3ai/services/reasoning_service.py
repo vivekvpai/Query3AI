@@ -4,6 +4,29 @@ from groq import Groq  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
 
 
+def _call_llm(messages: list[dict]) -> str:
+    """
+    Thin LLM dispatch helper.
+    Routes to Groq or Ollama based on MODEL_PROVIDER.
+    Returns the raw text content from the model response.
+    """
+    if settings.MODEL_PROVIDER == "groq":
+        client = Groq(api_key=settings.GROQ_API_KEY)
+        response = client.chat.completions.create(
+            model=settings.GROQ_REASONING_MODEL,
+            messages=messages,
+        )
+        return response.choices[0].message.content
+
+    model = (
+        settings.CLOUD_REASONING_MODEL
+        if settings.MODEL_PROVIDER == "ollama_cloud"
+        else settings.REASONING_MODEL
+    )
+    response = ollama.chat(model=model, messages=messages)
+    return response["message"]["content"]
+
+
 def answer(question: str, context_nodes: list[dict]) -> str:
     """Uses Ollama or Groq to answer a question based on filtered sections from Neo4j."""
 
@@ -24,31 +47,12 @@ def answer(question: str, context_nodes: list[dict]) -> str:
     system_prompt = settings.REASONING_SYSTEM_PROMPT.strip()
     try:
         user_prompt = f"Context:\n{context_text}\n\nQuestion:\n{question}"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
 
-        if settings.MODEL_PROVIDER == "groq":
-            client = Groq(api_key=settings.GROQ_API_KEY)
-            response = client.chat.completions.create(
-                model=settings.GROQ_REASONING_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            content = response.choices[0].message.content
-        else:
-            model = (
-                settings.CLOUD_REASONING_MODEL
-                if settings.MODEL_PROVIDER == "ollama_cloud"
-                else settings.REASONING_MODEL
-            )
-            response = ollama.chat(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            content = response["message"]["content"]
+        content = _call_llm(messages)
 
         # Clean up Chain-of-Thought reasoning blocks (e.g. from DeepSeek R1)
         if content:
@@ -64,4 +68,3 @@ def answer(question: str, context_nodes: list[dict]) -> str:
         ):
             return "❌ **Reasoning Model Error:** Generating the answer failed. The filtered search nodes exceeded the strict API token limits! Try narrowing your query!"
         return f"❌ **AI Reasoning Error:** {e}"
-

@@ -9,3 +9,5 @@ pandas
 ollama
 neo4j
 groq
+langgraph>=0.2
+langchain-core>=0.2

@@ -25,7 +25,9 @@ dependencies = [
     "readchar>=4.0.0",
     "ollama",
     "neo4j",
-    "groq"
+    "groq",
+    "langgraph>=0.2",
+    "langchain-core>=0.2"
 ]
 
 [project.urls]
