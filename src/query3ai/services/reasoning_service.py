@@ -4,7 +4,7 @@ from groq import Groq  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
 
 
-def _call_llm(messages: list[dict]) -> str:
+def _call_llm(messages: list[dict]) -> str | None:
     """
     Thin LLM dispatch helper.
     Routes to Groq or Ollama based on MODEL_PROVIDER.
@@ -52,7 +52,7 @@ def answer(question: str, context_nodes: list[dict]) -> str:
             {"role": "user", "content": user_prompt},
         ]
 
-        content = _call_llm(messages)
+        content = _call_llm(messages) or ""
 
         # Clean up Chain-of-Thought reasoning blocks (e.g. from DeepSeek R1)
         if content:

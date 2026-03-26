@@ -1,4 +1,3 @@
-import os
 import json
 import datetime
 import ollama  # type: ignore

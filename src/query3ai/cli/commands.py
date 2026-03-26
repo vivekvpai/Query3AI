@@ -17,7 +17,6 @@ from query3ai.services.document_service import extract_text, chunk_text  # type:
 from query3ai.services.reasoning_service import answer  # type: ignore
 from query3ai.services.tree_service import build_tree  # type: ignore
 from query3ai.services.decision_service import filter_nodes  # type: ignore
-from query3ai.langgraph_pipeline.graph import run_query_graph  # type: ignore
 from query3ai.services.graph_service import store_tree, get_nodes, get_all_nodes, delete_document  # type: ignore
 from query3ai.db.neo4j_client import neo4j_client  # type: ignore
 from query3ai.config.settings import settings  # type: ignore

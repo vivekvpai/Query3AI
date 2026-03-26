@@ -27,7 +27,7 @@ def fetch_nodes_node(state: QueryState) -> dict:
         else:
             nodes = graph_service.get_all_nodes()
 
-        return {"all_nodes": nodes, "error": None}
+        return {"all_nodes": nodes}
 
     except Exception as exc:
         return {"all_nodes": [], "error": f"Neo4j fetch error: {exc}"}
@@ -39,11 +39,14 @@ def fetch_nodes_node(state: QueryState) -> dict:
 
 def decision_node(state: QueryState) -> dict:
     """Calls the Decision Agent to filter sections relevant to the question."""
+    # Short-circuit if a previous node already set an error
+    if state.get("error"):
+        return {"filtered_nodes": []}
+
     all_nodes = state.get("all_nodes", [])
     question = state["question"]
 
     if not all_nodes:
-        # Nothing to filter; short-circuit
         return {"filtered_nodes": []}
 
     try:
@@ -62,11 +65,9 @@ def reasoning_node(state: QueryState) -> dict:
     question = state["question"]
     filtered_nodes = state.get("filtered_nodes", [])
 
-    try:
-        answer = reasoning_service.answer(question, filtered_nodes)
-        return {"answer": answer}
-    except Exception as exc:
-        return {"answer": f"❌ **Reasoning Agent Error:** {exc}"}
+    # Delegate entirely to reasoning_service which has its own error handling
+    answer = reasoning_service.answer(question, filtered_nodes)
+    return {"answer": answer}
 
 
 # ---------------------------------------------------------------------------

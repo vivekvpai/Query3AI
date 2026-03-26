@@ -27,6 +27,9 @@ from query3ai.langgraph_pipeline.nodes import (
 
 def _route_after_decision(state: QueryState) -> str:
     """Route to 'reasoning' if filtered nodes exist, else 'no_results'."""
+    # If an upstream error occurred (e.g. Neo4j down), skip reasoning entirely
+    if state.get("error"):
+        return "no_results"
     if state.get("filtered_nodes"):
         return "reasoning"
     return "no_results"
@@ -36,7 +39,8 @@ def _route_after_decision(state: QueryState) -> str:
 # Build the graph (done once at import time)
 # ---------------------------------------------------------------------------
 
-def _build_graph() -> StateGraph:
+def _build_graph():
+    """Constructs and compiles the LangGraph StateGraph."""
     builder = StateGraph(QueryState)
 
     # Register nodes
@@ -92,4 +96,9 @@ def run_query_graph(question: str, doc_id: str | None = None) -> str:
     }
 
     final_state: QueryState = _graph.invoke(initial_state)
+
+    # Surface pipeline errors to the caller instead of silently losing them
+    if final_state.get("error") and not final_state.get("answer"):
+        return f"❌ **Pipeline Error:** {final_state['error']}"
+
     return final_state.get("answer", "")
