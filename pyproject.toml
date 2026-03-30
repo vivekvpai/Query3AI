@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "query3ai"
-version = "0.2.0"
+version = "0.2.1"
 authors = [
   { name="Query3AI Author", email="paivivek002@gmail.com" },
 ]

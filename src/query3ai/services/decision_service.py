@@ -17,10 +17,10 @@ def _call_llm(messages: list[dict], temperature: float = 0.0) -> str:
     Returns the raw text content from the model response.
     """
     kwargs = {}
-    if settings.LLM_API_KEY:
-        kwargs["api_key"] = settings.LLM_API_KEY
-    if settings.get_api_base():
-        kwargs["api_base"] = settings.get_api_base()
+    if settings.get_decision_api_key():
+        kwargs["api_key"] = settings.get_decision_api_key()
+    if settings.get_decision_api_base():
+        kwargs["api_base"] = settings.get_decision_api_base()
 
     response = litellm.completion(
         model=settings.get_active_decision_model(),

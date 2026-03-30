@@ -18,10 +18,10 @@ def build_tree(chunks: list[str]) -> dict:
 
     try:
         kwargs = {}
-        if settings.LLM_API_KEY:
-            kwargs["api_key"] = settings.LLM_API_KEY
-        if settings.get_api_base():
-            kwargs["api_base"] = settings.get_api_base()
+        if settings.get_tree_api_key():
+            kwargs["api_key"] = settings.get_tree_api_key()
+        if settings.get_tree_api_base():
+            kwargs["api_base"] = settings.get_tree_api_base()
 
         response = litellm.completion(
             model=settings.get_active_tree_model(),

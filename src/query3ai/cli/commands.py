@@ -68,7 +68,7 @@ def handle_error(e: Exception):
         or "unauthorized" in err_str
     ):
         console.print(
-            f"[bold red]AI Model Error:[/bold red] Could not connect to AI Provider ({settings.MODEL_PROVIDER}).\n"
+            "[bold red]AI Model Error:[/bold red] Could not connect to the AI Provider.\n"
             "[yellow]Check your API keys, network connection, or if the service is running.[/yellow]\n"
             f"[dim]Details: {e}[/dim]"
         )
@@ -1201,12 +1201,15 @@ services:
       - ./neo4j_data:/data
 """
         default_config = {
-            "LLM_API_KEY": "",
+            "TREE_API_KEY": "",
+            "DECISION_API_KEY": "",
+            "REASONING_API_KEY": "",
             "TREE_MODEL": "openai/gpt-4o",
             "DECISION_MODEL": "openai/gpt-4o-mini",
             "REASONING_MODEL": "openai/o3-mini",
-            "MODEL_PROVIDER": "default",
-            "API_BASE": "",
+            "TREE_API_BASE": "",
+            "DECISION_API_BASE": "",
+            "REASONING_API_BASE": "",
             "QUERY3AI_CHUNK_SIZE": "500",
             "NEO4J_URI": "bolt://localhost:7687",
             "NEO4J_USER": "neo4j",
@@ -1266,12 +1269,15 @@ services:
 """
 
     default_config = {
-        "LLM_API_KEY": "",
+        "TREE_API_KEY": "",
+        "DECISION_API_KEY": "",
+        "REASONING_API_KEY": "",
         "TREE_MODEL": "openai/gpt-4o",
         "DECISION_MODEL": "openai/gpt-4o-mini",
         "REASONING_MODEL": "openai/o3-mini",
-        "MODEL_PROVIDER": "default",
-        "API_BASE": "",
+        "TREE_API_BASE": "",
+        "DECISION_API_BASE": "",
+        "REASONING_API_BASE": "",
         "QUERY3AI_CHUNK_SIZE": "500",
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",

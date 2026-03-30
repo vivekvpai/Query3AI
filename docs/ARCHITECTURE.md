@@ -182,75 +182,43 @@ The Reasoning AI is the quality ceiling of the system. Because Agents 1 and 2 do
 
 ## Model Configuration
 
-All model settings live in `config/settings.py`. Query3AI supports **three model providers** — switch between them by changing a single line.
+All model settings live in `config/settings.py` (which reads from `.env` and `config.json`). Query3AI uses a **"Mix and Match"** architecture, meaning you can configure different providers for each agent simultaneously. 
 
-### The Three Providers
+### The Three Agents' Configurations
 
-| Provider | Value | Description |
-|---|---|---|
-| **Ollama Local** | `"ollama_local"` | Runs on your machine via Ollama. Fully private, no internet needed |
-| **Ollama Cloud** | `"ollama_cloud"` | Ollama-hosted cloud models. Faster, higher quality, requires internet |
-| **Groq** | `"groq"` | Groq API inference. Fastest option, requires a Groq API key |
+Each agent has a dedicated set of variables:
+- **Tree AI**: `TREE_MODEL`, `TREE_API_KEY`, `TREE_API_BASE`
+- **Decision AI**: `DECISION_MODEL`, `DECISION_API_KEY`, `DECISION_API_BASE`
+- **Reasoning AI**: `REASONING_MODEL`, `REASONING_API_KEY`, `REASONING_API_BASE`
 
-Set your active provider with one line:
+By specifying the provider in the model name (e.g., `openai/...`, `groq/...`, `ollama/...`), LiteLLM automatically routes the request natively.
 
-```python
-MODEL_PROVIDER: str = "ollama_local"  # "ollama_local" | "ollama_cloud" | "groq"
-```
+### Explicit Model Slots
 
-Query3AI automatically routes all three agents to the correct models for that provider — no other changes needed.
-
----
-
-### Model Slots
-
-Each agent has an independent model slot per provider. You can change any of them to any compatible model:
+You no longer need a global provider flag. Simply declare the models:
 
 ```python
-# Ollama Local — runs on your machine
-TREE_MODEL      = "any-ollama-local-model"
-DECISION_MODEL  = "any-ollama-local-model"
-REASONING_MODEL = "any-ollama-local-model"
-
-# Ollama Cloud — hosted cloud inference via Ollama
-CLOUD_TREE_MODEL      = "any-ollama-cloud-model"
-CLOUD_DECISION_MODEL  = "any-ollama-cloud-model"
-CLOUD_REASONING_MODEL = "any-ollama-cloud-model"
-
-# Groq — API-based inference (requires GROQ_API_KEY)
-GROQ_TREE_MODEL      = "any-groq-compatible-model"
-GROQ_DECISION_MODEL  = "any-groq-compatible-model"
-GROQ_REASONING_MODEL = "any-groq-compatible-model"
+# Mix and match across providers natively
+TREE_MODEL = "openai/gpt-4o"
+DECISION_MODEL = "groq/llama-3.3-70b-versatile"
+REASONING_MODEL = "ollama/qwen3-32b"
 ```
-
----
 
 ### Environment Variables
 
-Sensitive values are loaded from a `.env` file and never hardcoded:
+Sensitive values and base URLs are loaded from a `.env` file or `config.json` and never hardcoded:
 
 ```bash
 # .env
-GROQ_API_KEY=your_groq_api_key_here
+TREE_API_KEY=sk-proj-your-openai-key
+DECISION_API_KEY=gsk_your-groq-key
+REASONING_API_BASE=http://your-remote-ollama-ip:11434
+
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_neo4j_password
 QUERY3AI_CHUNK_SIZE=500   # optional, default is 500
 ```
-
----
-
-### How Provider Routing Works
-
-The `settings.py` exposes three helper methods that return the active model for each agent based on the current `MODEL_PROVIDER` value:
-
-```
-get_active_tree_model()      → returns correct model for Agent 1
-get_active_decision_model()  → returns correct model for Agent 2
-get_active_reasoning_model() → returns correct model for Agent 3
-```
-
-Every service calls these methods — so swapping providers is always a one-line change in `MODEL_PROVIDER`.
 
 ---
 
@@ -266,13 +234,13 @@ Regardless of which provider you use, the same priorities apply:
 
 ### Provider Trade-offs
 
-| | Ollama Local | Ollama Cloud | Groq |
+| | Ollama Local | Ollama Cloud | Groq / OpenAI API |
 |---|---|---|---|
 | **Privacy** | ✅ Fully private | ⚠️ External server | ⚠️ External server |
 | **Speed** | ❌ Slow (CPU-bound) | ✅ Fast | ✅ Fastest |
-| **Cost** | ✅ Free | Varies | Free tier available |
+| **Cost** | ✅ Free | Varies | Depends on usage |
 | **Offline use** | ✅ Yes | ❌ No | ❌ No |
-| **API key required** | ❌ No | ❌ No | ✅ Yes (`GROQ_API_KEY`) |
+| **API key required**| ❌ No | ❌ No | ✅ Yes (`<AGENT>_API_KEY`) |
 | **Model quality** | Depends on size | Generally high | Generally high |
 
 ---

@@ -152,28 +152,25 @@ Answer + Source Sections
 
 ## Model Configuration
 
-Edit `~/.query3ai/config.json` to customize models:
+Query3AI uses a "Mix and Match" architecture, meaning you can configure different providers (Local, OpenAI, Groq, etc.) for each of the three agents simultaneously.
+
+Edit `~/.query3ai/config.json` to customize models, keys, and base URLs:
 
 ```json
 {
-  "MODEL_PROVIDER": "groq",
-  "TREE_MODEL": "phi3.5:3.8b",
-  "DECISION_MODEL": "gemma2:2b",
-  "REASONING_MODEL": "deepseek-r1:7b"
+    "TREE_API_KEY": "sk-proj-...",
+    "DECISION_API_KEY": "gsk-...",
+    "REASONING_API_KEY": "",
+    "TREE_MODEL": "openai/gpt-4o",
+    "DECISION_MODEL": "groq/llama-3.3-70b-versatile",
+    "REASONING_MODEL": "ollama/qwen3-32b",
+    "TREE_API_BASE": "",
+    "DECISION_API_BASE": "",
+    "REASONING_API_BASE": "http://localhost:11434"
 }
 ```
 
-| Provider | Description | Privacy | Speed | Cost |
-|---|---|---|---|---|
-| `ollama_local` | Local Ollama models | ✅ Fully private | ❌ Slow (CPU) | ✅ Free |
-| `ollama_cloud` | Cloud Ollama models | ⚠️ External | ✅ Fast | Varies |
-| `groq` | Groq API (recommended) | ⚠️ External | ✅ Fastest | Free tier |
-
-For Groq, add your API key to `~/.query3ai/.env`:
-
-```bash
-GROQ_API_KEY=your_groq_api_key_here
-```
+This allows you to leverage the best model for each specific task (e.g. OpenAI for high-context tree structuring, Groq for lightning-fast decision processing, and local Ollama for reasoning security).
 
 ---
 
