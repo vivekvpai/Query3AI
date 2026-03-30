@@ -37,37 +37,51 @@ def load_config() -> dict:
 
 _config = load_config()
 
-DEFAULT_TREE_PROMPT = """IDENTITY: You are a document structure extractor operating inside a 3-agent document intelligence pipeline. Your output feeds directly into a graph database — correctness is critical.
+DEFAULT_TREE_PROMPT = """IDENTITY: You are a hierarchical document structure extractor operating inside a 3-agent document intelligence pipeline. Your output feeds directly into a Neo4j graph database — structural correctness and depth are critical.
 
 CONSTRAINTS:
 - Output ONLY valid JSON. No markdown. No explanation. No extra text before or after.
 - Never invent content not present in the chunks.
 - Never leave a chunk unassigned.
+- Every chunk must appear exactly once across the entire tree.
 
 CAPABILITIES:
-- CAN: identify logical sections, extract headings, write dense summaries, extract specific keywords
+- CAN: identify logical chapters and sub-sections, extract precise headings, write dense summaries, extract specific keywords at every level
 - CANNOT: answer questions, reason about content, add opinions or inferences
+
+HIERARCHY — 4 LEVELS:
+Level 1 — Document: the entire document as one root node
+Level 2 — Chapter: major thematic divisions (e.g. Introduction, Methodology, Results). A document should have 4-8 chapters.
+Level 3 — Section: logical sub-divisions within each chapter. Each chapter should have 2-5 sections.
+Level 4 — Chunk: the actual text chunks assigned to their parent section. Each section should have 2-6 chunks.
 
 RULES:
 DO:
-- summary: 1-2 sentences, factual, dense, zero filler
-- keywords: specific nouns/concepts only (e.g. "authentication", "Neo4j", "chunk_index")
-- Assign every chunk to exactly one section
+- summary: 1-2 sentences, factual, dense, zero filler at every level
+- keywords: specific nouns/concepts only — model names, techniques, tools, proper nouns
+- Create chapters that reflect the document's actual major themes
+- Create sections that reflect logical sub-topics within each chapter
+- Assign every chunk to the most semantically fitting section
+- If a chunk does not cleanly fit anywhere, create a misc section under the nearest chapter
 DON'T:
-- Use generic words as keywords: "document", "section", "overview", "content", "information"
+- Use generic keywords: "document", "section", "overview", "content", "information", "introduction"
 - Add any text outside the JSON
+- Create chapters with only one section
+- Create sections with only one chunk
 - Skip any chunk_index from the input
 
 OUTPUT FORMAT:
-{"title":"...","summary":"...","keywords":["k1","k2","k3"],"sections":[{"heading":"...","summary":"...","keywords":["k1","k2"],"chunks":[{"chunk_index":0,"summary":"...","keywords":["k1","k2"]}]}]}
+{"title":"...","summary":"...","keywords":["k1","k2","k3"],"chapters":[{"heading":"...","summary":"...","keywords":["k1","k2"],"sections":[{"heading":"...","summary":"...","keywords":["k1","k2"],"chunks":[{"chunk_index":0,"summary":"...","keywords":["k1","k2"]}]}]}]}
 
 EXAMPLES:
 
-Input chunk_index 0: "The system uses JWT tokens for API authentication with a 24-hour expiry..."
-Input chunk_index 1: "PostgreSQL stores user records. Redis handles session caching..."
+Input chunk_index 0: "JWT tokens are used for API authentication with 24-hour expiry..."
+Input chunk_index 1: "Refresh tokens extend sessions for up to 30 days without re-login..."
+Input chunk_index 2: "PostgreSQL stores all user records with indexed email fields..."
+Input chunk_index 3: "Redis handles session caching with a TTL of 3600 seconds..."
 
 Correct output:
-{"title":"System Architecture","summary":"Overview of authentication and data storage design.","keywords":["JWT","PostgreSQL","Redis","authentication","session"],"sections":[{"heading":"Authentication","summary":"JWT-based API authentication with 24-hour token expiry.","keywords":["JWT","authentication","expiry"],"chunks":[{"chunk_index":0,"summary":"JWT tokens used for API auth with 24h expiry.","keywords":["JWT","authentication"]}]},{"heading":"Data Storage","summary":"PostgreSQL for user records, Redis for session caching.","keywords":["PostgreSQL","Redis","session","caching"],"chunks":[{"chunk_index":1,"summary":"PostgreSQL stores users, Redis handles sessions.","keywords":["PostgreSQL","Redis"]}]}]}
+{"title":"System Architecture","summary":"Technical design covering authentication, session management, and data storage for a scalable web system.","keywords":["JWT","PostgreSQL","Redis","authentication","session"],"chapters":[{"heading":"Security and Authentication","summary":"Authentication mechanisms and session lifecycle management.","keywords":["JWT","authentication","session","refresh"],"sections":[{"heading":"Token-Based Authentication","summary":"JWT tokens with 24-hour expiry used for stateless API authentication.","keywords":["JWT","authentication","expiry"],"chunks":[{"chunk_index":0,"summary":"JWT tokens authenticate API requests with 24h expiry.","keywords":["JWT","authentication"]}]},{"heading":"Session Management","summary":"Refresh token strategy extending user sessions up to 30 days.","keywords":["refresh token","session","TTL"],"chunks":[{"chunk_index":1,"summary":"Refresh tokens extend sessions 30 days without re-login.","keywords":["refresh token","session"]}]}]},{"heading":"Data Storage","summary":"Relational and cache storage design for user data and sessions.","keywords":["PostgreSQL","Redis","caching","storage"],"sections":[{"heading":"Relational Database","summary":"PostgreSQL used for persistent user record storage with optimised indexing.","keywords":["PostgreSQL","indexing","user records"],"chunks":[{"chunk_index":2,"summary":"PostgreSQL stores user records with indexed email fields.","keywords":["PostgreSQL","indexing"]}]},{"heading":"Cache Layer","summary":"Redis handles high-speed session caching with TTL configuration.","keywords":["Redis","caching","TTL"],"chunks":[{"chunk_index":3,"summary":"Redis caches sessions with 3600 second TTL.","keywords":["Redis","TTL"]}]}]}]}
 
 Wrong output (never do this):
 Here is the JSON: ```json { ... } ```"""
@@ -165,21 +179,11 @@ Refunds take 5-7 business days. Submit requests to support@company.com."""
 class Settings:
     CHUNK_SIZE: int = int(_config.get("QUERY3AI_CHUNK_SIZE", os.environ.get("QUERY3AI_CHUNK_SIZE", "500")))
 
-    MODEL_PROVIDER: str = _config.get("MODEL_PROVIDER", os.environ.get("MODEL_PROVIDER", "groq"))
+    LLM_API_KEY: str = _config.get("LLM_API_KEY", os.environ.get("LLM_API_KEY", ""))
 
-    TREE_MODEL: str = _config.get("TREE_MODEL", os.environ.get("TREE_MODEL", "phi3.5:3.8b"))
-    DECISION_MODEL: str = _config.get("DECISION_MODEL", os.environ.get("DECISION_MODEL", "gemma2:2b"))
-    REASONING_MODEL: str = _config.get("REASONING_MODEL", os.environ.get("REASONING_MODEL", "deepseek-r1:7b"))
-
-    CLOUD_TREE_MODEL: str = _config.get("CLOUD_TREE_MODEL", os.environ.get("CLOUD_TREE_MODEL", "qwen3.5:cloud"))
-    CLOUD_DECISION_MODEL: str = _config.get("CLOUD_DECISION_MODEL", os.environ.get("CLOUD_DECISION_MODEL", "kimi-k2.5:cloud"))
-    CLOUD_REASONING_MODEL: str = _config.get("CLOUD_REASONING_MODEL", os.environ.get("CLOUD_REASONING_MODEL", "glm-5:cloud"))
-
-    GROQ_API_KEY: str = _config.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
-
-    GROQ_TREE_MODEL: str = _config.get("GROQ_TREE_MODEL", os.environ.get("GROQ_TREE_MODEL", "llama-3.3-70b-versatile"))
-    GROQ_DECISION_MODEL: str = _config.get("GROQ_DECISION_MODEL", os.environ.get("GROQ_DECISION_MODEL", "moonshotai/kimi-k2-instruct"))
-    GROQ_REASONING_MODEL: str = _config.get("GROQ_REASONING_MODEL", os.environ.get("GROQ_REASONING_MODEL", "qwen/qwen3-32b"))
+    TREE_MODEL: str = _config.get("TREE_MODEL", os.environ.get("TREE_MODEL", "openai/gpt-4o"))
+    DECISION_MODEL: str = _config.get("DECISION_MODEL", os.environ.get("DECISION_MODEL", "openai/gpt-4o"))
+    REASONING_MODEL: str = _config.get("REASONING_MODEL", os.environ.get("REASONING_MODEL", "openai/gpt-4o"))
 
     NEO4J_URI: str = _config.get("NEO4J_URI", os.environ.get("NEO4J_URI", "bolt://localhost:7687"))
     NEO4J_USER: str = _config.get("NEO4J_USER", os.environ.get("NEO4J_USER", "neo4j"))
@@ -189,20 +193,24 @@ class Settings:
     DECISION_SYSTEM_PROMPT: str = _config.get("DECISION_SYSTEM_PROMPT", os.environ.get("DECISION_SYSTEM_PROMPT", DEFAULT_DECISION_PROMPT))
     REASONING_SYSTEM_PROMPT: str = _config.get("REASONING_SYSTEM_PROMPT", os.environ.get("REASONING_SYSTEM_PROMPT", DEFAULT_REASONING_PROMPT))
 
+    MODEL_PROVIDER: str = _config.get("MODEL_PROVIDER", os.environ.get("MODEL_PROVIDER", "default"))
+    API_BASE: str = _config.get("API_BASE", os.environ.get("API_BASE", ""))
+
+    @property
+    def is_cloud_enabled(self) -> bool:
+        return self.MODEL_PROVIDER in ["ollama_cloud", "cloud"]
+
     def get_active_tree_model(self) -> str:
-        if self.MODEL_PROVIDER == "groq":
-            return self.GROQ_TREE_MODEL
-        return self.CLOUD_TREE_MODEL if self.MODEL_PROVIDER == "ollama_cloud" else self.TREE_MODEL
+        return self.TREE_MODEL
 
     def get_active_decision_model(self) -> str:
-        if self.MODEL_PROVIDER == "groq":
-            return self.GROQ_DECISION_MODEL
-        return self.CLOUD_DECISION_MODEL if self.MODEL_PROVIDER == "ollama_cloud" else self.DECISION_MODEL
+        return self.DECISION_MODEL
 
     def get_active_reasoning_model(self) -> str:
-        if self.MODEL_PROVIDER == "groq":
-            return self.GROQ_REASONING_MODEL
-        return self.CLOUD_REASONING_MODEL if self.MODEL_PROVIDER == "ollama_cloud" else self.REASONING_MODEL
+        return self.REASONING_MODEL
+
+    def get_api_base(self) -> str | None:
+        return self.API_BASE if self.API_BASE else None
 
 
 settings = Settings()

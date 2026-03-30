@@ -1,11 +1,13 @@
 import json
-import ollama  # type: ignore
-from groq import Groq  # type: ignore
+import litellm  # type: ignore
+
+litellm.suppress_debug_info = True
+
 from query3ai.config.settings import settings  # type: ignore
 
 
 def build_tree(chunks: list[str]) -> dict:
-    """Uses Ollama or Groq to form a hierarchical tree from chunks."""
+    """Uses LiteLLM to form a hierarchical tree from chunks."""
     system_prompt = settings.TREE_SYSTEM_PROMPT.strip()
 
     # Format chunks to match system prompt examples
@@ -15,32 +17,22 @@ def build_tree(chunks: list[str]) -> dict:
     user_prompt = chunk_text
 
     try:
-        if settings.MODEL_PROVIDER == "groq":
-            client = Groq(api_key=settings.GROQ_API_KEY)
-            response = client.chat.completions.create(
-                model=settings.GROQ_TREE_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-            )
-            raw_content = response.choices[0].message.content
-        else:
-            model = (
-                settings.CLOUD_TREE_MODEL
-                if settings.MODEL_PROVIDER == "ollama_cloud"
-                else settings.TREE_MODEL
-            )
-            response = ollama.chat(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                format="json",
-            )
-            raw_content = response["message"]["content"]
+        kwargs = {}
+        if settings.LLM_API_KEY:
+            kwargs["api_key"] = settings.LLM_API_KEY
+        if settings.get_api_base():
+            kwargs["api_base"] = settings.get_api_base()
+
+        response = litellm.completion(
+            model=settings.get_active_tree_model(),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            **kwargs
+        )
+        raw_content = response.choices[0].message.content or "{}"
 
         return json.loads(raw_content)
 
@@ -54,4 +46,3 @@ def build_tree(chunks: list[str]) -> dict:
                 "Document too large: The extracted chunk text exceeded the AI model's token context window. Ingestion failed."
             )
         raise Exception(f"AI Model Connection Error during Tree Building: {e}")
-

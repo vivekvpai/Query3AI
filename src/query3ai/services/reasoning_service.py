@@ -1,34 +1,32 @@
 import re
-import ollama  # type: ignore
-from groq import Groq  # type: ignore
+import litellm  # type: ignore
+
+litellm.suppress_debug_info = True
+
 from query3ai.config.settings import settings  # type: ignore
 
 
 def _call_llm(messages: list[dict]) -> str | None:
     """
-    Thin LLM dispatch helper.
-    Routes to Groq or Ollama based on MODEL_PROVIDER.
+    Thin LLM dispatch helper using LiteLLM.
     Returns the raw text content from the model response.
     """
-    if settings.MODEL_PROVIDER == "groq":
-        client = Groq(api_key=settings.GROQ_API_KEY)
-        response = client.chat.completions.create(
-            model=settings.GROQ_REASONING_MODEL,
-            messages=messages,
-        )
-        return response.choices[0].message.content
+    kwargs = {}
+    if settings.LLM_API_KEY:
+        kwargs["api_key"] = settings.LLM_API_KEY
+    if settings.get_api_base():
+        kwargs["api_base"] = settings.get_api_base()
 
-    model = (
-        settings.CLOUD_REASONING_MODEL
-        if settings.MODEL_PROVIDER == "ollama_cloud"
-        else settings.REASONING_MODEL
+    response = litellm.completion(
+        model=settings.get_active_reasoning_model(),
+        messages=messages,
+        **kwargs
     )
-    response = ollama.chat(model=model, messages=messages)
-    return response["message"]["content"]
+    return response.choices[0].message.content
 
 
 def answer(question: str, context_nodes: list[dict]) -> str:
-    """Uses Ollama or Groq to answer a question based on filtered sections from Neo4j."""
+    """Uses LLMs to answer a question based on filtered sections from Neo4j."""
 
     context_blocks = []
     for node in context_nodes:

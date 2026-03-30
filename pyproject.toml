@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "query3ai"
-version = "0.1.2"
+version = "0.2.0"
 authors = [
   { name="Query3AI Author", email="paivivek002@gmail.com" },
 ]
@@ -23,9 +23,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "prompt_toolkit>=3.0.0",
     "readchar>=4.0.0",
-    "ollama",
+    "litellm",
     "neo4j",
-    "groq",
     "langgraph>=0.2",
     "langchain-core>=0.2"
 ]
