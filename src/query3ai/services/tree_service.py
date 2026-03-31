@@ -11,7 +11,7 @@ def build_tree(chunks: list[str]) -> dict:
     system_prompt = settings.TREE_SYSTEM_PROMPT.strip()
 
     # Format chunks to match system prompt examples
-    chunk_strings = [f'Input chunk_index {idx}: "{chunk}"\n' for idx, chunk in enumerate(chunks)]
+    chunk_strings = [f'chunk_index {idx}: "{chunk}"\n' for idx, chunk in enumerate(chunks)]
     chunk_text = "".join(chunk_strings)
 
     user_prompt = chunk_text

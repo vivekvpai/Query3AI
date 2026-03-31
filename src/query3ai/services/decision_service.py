@@ -68,10 +68,8 @@ def filter_nodes(question: str, nodes: list) -> list:
         )
 
         user_prompt = (
-            f"Question: \"{question}\"\n"
-            f"Section heading: \"{heading}\"\n"
-            f"Section summary: \"{summary}\"\n"
-            f"Section keywords: \"{keywords_str}\"\n\nContent details:\n{chunk_texts}"
+            f"Query: \"{question}\"\n"
+            f"Heading: \"{heading}\" | Summary: \"{summary}\""
         )
 
         messages = [

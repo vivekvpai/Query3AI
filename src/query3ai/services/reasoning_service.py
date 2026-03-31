@@ -44,7 +44,7 @@ def answer(question: str, context_nodes: list[dict]) -> str:
 
     system_prompt = settings.REASONING_SYSTEM_PROMPT.strip()
     try:
-        user_prompt = f"Context:\n{context_text}\n\nQuestion:\n{question}"
+        user_prompt = f"Context: \"{context_text}\"\nQuery: \"{question}\""
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
