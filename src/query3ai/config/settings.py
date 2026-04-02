@@ -129,8 +129,67 @@ Query: "What is the success rate of the system?"
 Correct Output:
 The system achieved a 95% success rate during initial testing, but this dropped to 82% during field deployment due to thermal throttling."""
 
+DEFAULT_TOC_DETECTION_PROMPT = """You are analyzing a page of a document. Does this page contain a Table of Contents, Index, or Contents listing? Answer ONLY with 'YES' or 'NO'.
+
+Page Text:
+{text}"""
+
+DEFAULT_TOC_EXTRACTION_PROMPT = """Extract the Table of Contents from the following text. Clean up formatting artifacts like dot leaders (....), extra whitespace, and noisy page number formatting. Return the cleaned Table of Contents text.
+
+Raw Text:
+{raw_toc_text}"""
+
+DEFAULT_TOC_PAGE_NUMBER_PROMPT = """Does the following Table of Contents text contain page number references for its sections? Answer ONLY with 'YES' or 'NO'.
+
+TOC Text:
+{toc_text}"""
+
+DEFAULT_TOC_PARSING_PROMPT = """Parse the following Table of Contents into a JSON array of sections. Each entry must have:
+- 'title': The name of the section or chapter.
+- 'page': The page number (integer, or null if not found).
+- 'level': The nesting level (1 for main chapter, 2 for section, 3 for sub-section).
+
+Return ONLY the JSON array.
+
+TOC Text:
+{toc_text}"""
+
+DEFAULT_VERIFICATION_PROMPT = """You are verifying a document structure. Does the following section heading appear in or begin within this page text? Answer ONLY with 'YES' or 'NO'.
+
+Section heading: "{heading}"
+
+Page text:
+{text}"""
+
+DEFAULT_CORRECTION_PROMPT = """A section with the heading "{heading}" was incorrectly mapped. It should start somewhere within pages {search_range_start} to {search_range_end}.
+
+Here is the text from those pages:
+{range_text}
+
+On which page number does the section "{heading}" actually begin? Reply with ONLY the page number (integer). If not found, reply '0'."""
+
 class Settings:
     CHUNK_SIZE: int = int(_config.get("QUERY3AI_CHUNK_SIZE", os.environ.get("QUERY3AI_CHUNK_SIZE", "500")))
+
+    # Phase 1: Ingestion Foundation
+    USE_PAGE_RANGES: bool = _config.get("USE_PAGE_RANGES", os.environ.get("USE_PAGE_RANGES", "True")).lower() == "true"
+    PAGE_BATCH_SIZE: int = int(_config.get("PAGE_BATCH_SIZE", os.environ.get("PAGE_BATCH_SIZE", "10")))
+    PAGE_BATCH_OVERLAP: int = int(_config.get("PAGE_BATCH_OVERLAP", os.environ.get("PAGE_BATCH_OVERLAP", "3")))
+
+    # Phase 2: Intelligent Structuring
+    TOC_CHECK_PAGE_NUM: int = int(_config.get("TOC_CHECK_PAGE_NUM", os.environ.get("TOC_CHECK_PAGE_NUM", "20")))
+    MAX_PAGES_PER_NODE: int = int(_config.get("MAX_PAGES_PER_NODE", os.environ.get("MAX_PAGES_PER_NODE", "10")))
+    MAX_TOKENS_PER_NODE: int = int(_config.get("MAX_TOKENS_PER_NODE", os.environ.get("MAX_TOKENS_PER_NODE", "20000")))
+    MAX_RECURSION_DEPTH: int = int(_config.get("MAX_RECURSION_DEPTH", os.environ.get("MAX_RECURSION_DEPTH", "3")))
+
+    # Phase 3: Quality Assurance
+    VERIFICATION_SAMPLE_SIZE: int = int(_config.get("VERIFICATION_SAMPLE_SIZE", os.environ.get("VERIFICATION_SAMPLE_SIZE", "10")))
+    VERIFICATION_ACCURACY_THRESHOLD: float = float(_config.get("VERIFICATION_ACCURACY_THRESHOLD", os.environ.get("VERIFICATION_ACCURACY_THRESHOLD", "0.6")))
+    CORRECTION_MAX_RETRIES: int = int(_config.get("CORRECTION_MAX_RETRIES", os.environ.get("CORRECTION_MAX_RETRIES", "3")))
+
+    # Phase 4: Orchestration
+    INGEST_STRATEGY_AUTO: bool = _config.get("INGEST_STRATEGY_AUTO", os.environ.get("INGEST_STRATEGY_AUTO", "True")).lower() == "true"
+    FORCE_STRATEGY: str = _config.get("FORCE_STRATEGY", os.environ.get("FORCE_STRATEGY", "auto"))
 
     TREE_API_KEY: str = _config.get("TREE_API_KEY", os.environ.get("TREE_API_KEY", ""))
     DECISION_API_KEY: str = _config.get("DECISION_API_KEY", os.environ.get("DECISION_API_KEY", ""))
@@ -147,6 +206,13 @@ class Settings:
     TREE_SYSTEM_PROMPT: str = _config.get("TREE_SYSTEM_PROMPT", os.environ.get("TREE_SYSTEM_PROMPT", DEFAULT_TREE_PROMPT))
     DECISION_SYSTEM_PROMPT: str = _config.get("DECISION_SYSTEM_PROMPT", os.environ.get("DECISION_SYSTEM_PROMPT", DEFAULT_DECISION_PROMPT))
     REASONING_SYSTEM_PROMPT: str = _config.get("REASONING_SYSTEM_PROMPT", os.environ.get("REASONING_SYSTEM_PROMPT", DEFAULT_REASONING_PROMPT))
+
+    TOC_DETECTION_PROMPT: str = _config.get("TOC_DETECTION_PROMPT", os.environ.get("TOC_DETECTION_PROMPT", DEFAULT_TOC_DETECTION_PROMPT))
+    TOC_EXTRACTION_PROMPT: str = _config.get("TOC_EXTRACTION_PROMPT", os.environ.get("TOC_EXTRACTION_PROMPT", DEFAULT_TOC_EXTRACTION_PROMPT))
+    TOC_PAGE_NUMBER_PROMPT: str = _config.get("TOC_PAGE_NUMBER_PROMPT", os.environ.get("TOC_PAGE_NUMBER_PROMPT", DEFAULT_TOC_PAGE_NUMBER_PROMPT))
+    TOC_PARSING_PROMPT: str = _config.get("TOC_PARSING_PROMPT", os.environ.get("TOC_PARSING_PROMPT", DEFAULT_TOC_PARSING_PROMPT))
+    VERIFICATION_PROMPT: str = _config.get("VERIFICATION_PROMPT", os.environ.get("VERIFICATION_PROMPT", DEFAULT_VERIFICATION_PROMPT))
+    CORRECTION_PROMPT: str = _config.get("CORRECTION_PROMPT", os.environ.get("CORRECTION_PROMPT", DEFAULT_CORRECTION_PROMPT))
 
     TREE_API_BASE: str = _config.get("TREE_API_BASE", os.environ.get("TREE_API_BASE", ""))
     DECISION_API_BASE: str = _config.get("DECISION_API_BASE", os.environ.get("DECISION_API_BASE", ""))

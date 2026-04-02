@@ -1,8 +1,12 @@
-from query3ai.utils.file_handler import extract_raw_text
+from query3ai.utils.file_handler import extract_raw_text, extract_pages_raw
 
 def extract_text(file_path: str) -> str:
     """Wrapper to extract text safely."""
     return extract_raw_text(file_path)
+
+def extract_pages(file_path: str) -> list[dict]:
+    """Returns page-level extraction: [{"page_number": int, "text": str, "token_count": int}]"""
+    return extract_pages_raw(file_path)
 
 def chunk_text(text: str, chunk_size: int = 500) -> list[str]:
     """Splits text into overlapping chunks of ~chunk_size words."""

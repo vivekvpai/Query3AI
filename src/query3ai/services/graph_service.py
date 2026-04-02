@@ -2,97 +2,157 @@ from query3ai.db.neo4j_client import neo4j_client
 from typing import List
 import datetime
 import uuid
+from query3ai.config.settings import settings
 
-def store_tree(tree: dict, doc_id: str, chunks: List[str]):
+def store_tree(
+    tree: dict,
+    doc_id: str,
+    chunks: List[str] | None = None,
+    pages: List[dict] | None = None,
+    strategy: str = "legacy",
+    accuracy: float = 1.0,
+):
     """Saves tree nodes to Neo4j with relationships Document -> Chapter -> Section -> Chunk."""
     ingested_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     full_hex = str(uuid.uuid4().hex)
     doc_node_id = f"doc_{full_hex[:8]}"
 
-    doc_node = neo4j_client.create_node("Document", {
-        "node_id": doc_node_id,
-        "node_type": "document",
-        "doc_id": doc_id,
-        "parent_id": None,
-        "title": tree.get("title", "Untitled Document"),
-        "filename": doc_id,
-        "summary": tree.get("summary", ""),
-        "keywords": tree.get("keywords", []),
-        "chunk_count": len(chunks),
-        "chapter_count": len(tree.get("chapters", [])),
-        "ingested_at": ingested_at
-    })
-    
+    doc_node = neo4j_client.create_node(
+        "Document",
+        {
+            "node_id": doc_node_id,
+            "node_type": "document",
+            "doc_id": doc_id,
+            "parent_id": None,
+            "title": tree.get("title", "Untitled Document"),
+            "filename": doc_id,
+            "summary": tree.get("summary", ""),
+            "keywords": tree.get("keywords", []),
+            "chunk_count": len(chunks) if chunks else 0,
+            "page_count": len(pages) if pages else 0,
+            "chapter_count": len(tree.get("chapters", [])),
+            "ingest_strategy": strategy,
+            "ingest_accuracy": accuracy,
+            "ingest_quality": "low" if accuracy < settings.VERIFICATION_ACCURACY_THRESHOLD else "high",
+            "ingested_at": ingested_at,
+        },
+    )
+
     chapters = tree.get("chapters", [])
     for chap_idx, chapter in enumerate(chapters):
         chap_hex = str(uuid.uuid4().hex)
         chap_node_id = f"chap_{chap_hex[:8]}"
-        
-        chap_node = neo4j_client.create_node("Chapter", {
-            "node_id": chap_node_id,
-            "node_type": "chapter",
-            "doc_id": doc_id,
-            "parent_id": doc_node_id,
-            "heading": chapter.get("heading", "Untitled Chapter"),
-            "summary": chapter.get("summary", ""),
-            "keywords": chapter.get("keywords", []),
-            "chapter_index": chap_idx,
-            "section_count": len(chapter.get("sections", [])),
-            "ingested_at": ingested_at
-        })
-        
+
+        chap_node = neo4j_client.create_node(
+            "Chapter",
+            {
+                "node_id": chap_node_id,
+                "node_type": "chapter",
+                "doc_id": doc_id,
+                "parent_id": doc_node_id,
+                "heading": chapter.get("heading", "Untitled Chapter"),
+                "summary": chapter.get("summary", ""),
+                "keywords": chapter.get("keywords", []),
+                "chapter_index": chap_idx,
+                "section_count": len(chapter.get("sections", [])),
+                "ingested_at": ingested_at,
+            },
+        )
+
         neo4j_client.execute_query(
             "MATCH (d:Document {node_id: $doc_id}), (ch:Chapter {node_id: $chap_id}) CREATE (d)-[:HAS_CHAPTER]->(ch)",
-            {"doc_id": doc_node_id, "chap_id": chap_node_id}
+            {"doc_id": doc_node_id, "chap_id": chap_node_id},
         )
-        
+
         sections = chapter.get("sections", [])
-        for sec_idx, section in enumerate(sections):
-            sec_hex = str(uuid.uuid4().hex)
-            sec_node_id = f"sec_{sec_hex[:8]}"
-            section_chunks = section.get("chunks", [])
-            
-            sec_node = neo4j_client.create_node("Section", {
-                "node_id": sec_node_id,
-                "node_type": "section",
-                "doc_id": doc_id,
-                "parent_id": chap_node_id,
-                "heading": section.get("heading", "Untitled Section"),
-                "summary": section.get("summary", ""),
-                "keywords": section.get("keywords", []),
-                "section_index": sec_idx,
-                "chunk_count": len(section_chunks),
-                "ingested_at": ingested_at
-            })
-            
-            neo4j_client.execute_query(
-                "MATCH (ch:Chapter {node_id: $chap_id}), (s:Section {node_id: $sec_id}) CREATE (ch)-[:HAS_SECTION]->(s)",
-                {"chap_id": chap_node_id, "sec_id": sec_node_id}
-            )
-            
-            for chunk_data in section_chunks:
+        _store_sections(sections, chap_node_id, doc_id, ingested_at, chunks, pages)
+
+
+def _store_sections(sections, parent_id, doc_id, ingested_at, chunks, pages):
+    for sec_idx, section in enumerate(sections):
+        sec_hex = str(uuid.uuid4().hex)
+        sec_node_id = f"sec_{sec_hex[:8]}"
+        section_chunks_meta = section.get("chunks", [])
+
+        sec_props = {
+            "node_id": sec_node_id,
+            "node_type": "section",
+            "doc_id": doc_id,
+            "parent_id": parent_id,
+            "heading": section.get("heading", "Untitled Section"),
+            "summary": section.get("summary", ""),
+            "keywords": section.get("keywords", []),
+            "section_index": sec_idx,
+            "ingested_at": ingested_at,
+        }
+
+        # Add page range if exists
+        if "start_page" in section:
+            sec_props["start_page"] = section["start_page"]
+            sec_props["end_page"] = section["end_page"]
+
+        sec_node = neo4j_client.create_node("Section", sec_props)
+
+        # Relationship to parent (can be Chapter or Section)
+        neo4j_client.execute_query(
+            "MATCH (p {node_id: $parent_id}), (s:Section {node_id: $sec_id}) "
+            "CREATE (p)-[:HAS_SECTION]->(s)",
+            {"parent_id": parent_id, "sec_id": sec_node_id},
+        )
+
+        # Handle Chunks (Legacy or Strategy 3 fallback)
+        if section_chunks_meta and chunks:
+            for chunk_data in section_chunks_meta:
                 chunk_idx = chunk_data.get("chunk_index")
                 if isinstance(chunk_idx, int) and chunk_idx < len(chunks):
-                    chk_hex = str(uuid.uuid4().hex)
-                    chk_node_id = f"chk_{chk_hex[:8]}"
-                    text = chunks[chunk_idx]
-                    chunk_node = neo4j_client.create_node("Chunk", {
-                        "node_id": chk_node_id,
-                        "node_type": "chunk",
-                        "doc_id": doc_id,
-                        "parent_id": sec_node_id,
-                        "chunk_index": chunk_idx,
-                        "summary": chunk_data.get("summary", ""),
-                        "keywords": chunk_data.get("keywords", []),
-                        "text": text,
-                        "token_count": len(text.split()),
-                        "ingested_at": ingested_at
-                    })
-                    
-                    neo4j_client.execute_query(
-                        "MATCH (s:Section {node_id: $sec_id}), (c:Chunk {node_id: $chunk_id}) CREATE (s)-[:HAS_CHUNK]->(c)",
-                        {"sec_id": sec_node_id, "chunk_id": chk_node_id}
+                    _create_chunk_node(
+                        sec_node_id, doc_id, chunk_idx, chunks[chunk_idx], chunk_data, ingested_at
                     )
+        
+        # Handle Page Range Chunks (Strategy 1 & 2)
+        elif "start_page" in section and pages:
+            start = section["start_page"]
+            end = section["end_page"]
+            for p in pages:
+                p_num = p.get("page_number")
+                if p_num and start <= p_num <= end:
+                    chunk_data = {
+                        "summary": f"Page {p_num} of section {section.get('heading')}",
+                        "keywords": []
+                    }
+                    _create_chunk_node(
+                        sec_node_id, doc_id, p_num, p["text"], chunk_data, ingested_at
+                    )
+
+        # Handle Recursive Sections
+        sub_sections = section.get("sections", [])
+        if sub_sections:
+            _store_sections(sub_sections, sec_node_id, doc_id, ingested_at, chunks, pages)
+
+
+def _create_chunk_node(sec_id, doc_id, index, text, meta, ingested_at):
+    chk_hex = str(uuid.uuid4().hex)
+    chk_node_id = f"chk_{chk_hex[:8]}"
+    neo4j_client.create_node(
+        "Chunk",
+        {
+            "node_id": chk_node_id,
+            "node_type": "chunk",
+            "doc_id": doc_id,
+            "parent_id": sec_id,
+            "chunk_index": index,
+            "summary": meta.get("summary", ""),
+            "keywords": meta.get("keywords", []),
+            "text": text,
+            "token_count": len(text.split()),
+            "ingested_at": ingested_at,
+        },
+    )
+
+    neo4j_client.execute_query(
+        "MATCH (s:Section {node_id: $sec_id}), (c:Chunk {node_id: $chunk_id}) CREATE (s)-[:HAS_CHUNK]->(c)",
+        {"sec_id": sec_id, "chunk_id": chk_node_id},
+    )
 
 def get_nodes(doc_id: str) -> dict:
     """Retrieves all nodes for a document as a structured graph dictionary."""

@@ -15,13 +15,24 @@ from rich.json import JSON  # type: ignore
 from rich.markdown import Markdown  # type: ignore
 import readchar  # type: ignore
 
-from query3ai.services.document_service import extract_text, chunk_text  # type: ignore
+from query3ai.services.document_service import extract_text, chunk_text, extract_pages  # type: ignore
 from query3ai.services.reasoning_service import answer  # type: ignore
 from query3ai.services.tree_service import build_tree  # type: ignore
 from query3ai.services.decision_service import filter_nodes  # type: ignore
 from query3ai.services.graph_service import store_tree, get_nodes, get_all_nodes, delete_document  # type: ignore
 from query3ai.db.neo4j_client import neo4j_client  # type: ignore
-from query3ai.config.settings import settings, DEFAULT_TREE_PROMPT, DEFAULT_DECISION_PROMPT, DEFAULT_REASONING_PROMPT  # type: ignore
+from query3ai.config.settings import (
+    settings,
+    DEFAULT_TREE_PROMPT,
+    DEFAULT_DECISION_PROMPT,
+    DEFAULT_REASONING_PROMPT,
+    DEFAULT_TOC_DETECTION_PROMPT,
+    DEFAULT_TOC_EXTRACTION_PROMPT,
+    DEFAULT_TOC_PAGE_NUMBER_PROMPT,
+    DEFAULT_TOC_PARSING_PROMPT,
+    DEFAULT_VERIFICATION_PROMPT,
+    DEFAULT_CORRECTION_PROMPT,
+)  # type: ignore
 from query3ai.config.paths import TEMP_OUTPUT_DIR  # type: ignore
 
 from prompt_toolkit import HTML
@@ -142,7 +153,7 @@ def ingest(
     file_path: str,
 ):
     """
-    Ingest a document, extract text, chunk it, build tree, and store in Neo4j.
+    Ingest a document using the best available strategy (TOC, Overlapping, or AI).
     """
 
     file_path = os.path.abspath(file_path)
@@ -164,32 +175,47 @@ def ingest(
         ) as progress:
             total_steps = 3
             task = progress.add_task(
-                description=f"Extracting text from {file_path}...", total=total_steps
+                description=f"Preserving structure: Extracting pages from {file_path}...",
+                total=total_steps,
             )
 
-            # 1. Extract & Chunk
+            # 1. Extract Pages & Chunks
+            pages = extract_pages(file_path)
             text = extract_text(file_path)
             chunks = chunk_text(text, chunk_size=settings.CHUNK_SIZE)
             progress.update(task, advance=1)
 
-            # 2. Build Tree via Tree Agent
+            # 2. Build Tree via Multi-Strategy Orchestrator
             progress.update(
                 task,
-                description=f"Building tree structure with {settings.get_active_tree_model()}...",
+                description=f"Generating intelligence map with {settings.get_active_tree_model()}...",
             )
-            tree_data = build_tree(chunks)
+            tree_data, accuracy, strategy = build_tree(
+                chunks=chunks, pages=pages, file_path=file_path
+            )
+
             if not tree_data.get("title"):
                 tree_data["title"] = doc_id
             progress.update(task, advance=1)
 
             # 3. Store in Neo4j
-            progress.update(task, description="Storing to Neo4j...")
-            store_tree(tree_data, doc_id, chunks)
+            progress.update(task, description="Mapping to Neo4j graph...")
+            store_tree(
+                tree_data,
+                doc_id,
+                chunks=chunks,
+                pages=pages,
+                strategy=strategy,
+                accuracy=accuracy,
+            )
             progress.update(task, advance=1, description="Done!")
 
         console.print(
-            f"[bold green]Success![/bold green] Ingested document '{doc_id}' into Neo4j graph with {len(chunks)} chunks."
+            f"[bold green]Success![/bold green] Ingested document '{doc_id}' using strategy [bold cyan]{strategy}[/bold cyan]."
         )
+        console.print(f"  Accuracy: [bold yellow]{accuracy:.0%}[/bold yellow]")
+        console.print(f"  Structure: {len(tree_data.get('chapters', []))} chapters, {len(pages)} pages.")
+
     except Exception as e:
         handle_error(e)
 
@@ -1217,6 +1243,12 @@ services:
             "TREE_SYSTEM_PROMPT": DEFAULT_TREE_PROMPT,
             "DECISION_SYSTEM_PROMPT": DEFAULT_DECISION_PROMPT,
             "REASONING_SYSTEM_PROMPT": DEFAULT_REASONING_PROMPT,
+            "TOC_DETECTION_PROMPT": DEFAULT_TOC_DETECTION_PROMPT,
+            "TOC_EXTRACTION_PROMPT": DEFAULT_TOC_EXTRACTION_PROMPT,
+            "TOC_PAGE_NUMBER_PROMPT": DEFAULT_TOC_PAGE_NUMBER_PROMPT,
+            "TOC_PARSING_PROMPT": DEFAULT_TOC_PARSING_PROMPT,
+            "VERIFICATION_PROMPT": DEFAULT_VERIFICATION_PROMPT,
+            "CORRECTION_PROMPT": DEFAULT_CORRECTION_PROMPT,
         }
 
         try:
@@ -1285,6 +1317,12 @@ services:
         "TREE_SYSTEM_PROMPT": DEFAULT_TREE_PROMPT,
         "DECISION_SYSTEM_PROMPT": DEFAULT_DECISION_PROMPT,
         "REASONING_SYSTEM_PROMPT": DEFAULT_REASONING_PROMPT,
+        "TOC_DETECTION_PROMPT": DEFAULT_TOC_DETECTION_PROMPT,
+        "TOC_EXTRACTION_PROMPT": DEFAULT_TOC_EXTRACTION_PROMPT,
+        "TOC_PAGE_NUMBER_PROMPT": DEFAULT_TOC_PAGE_NUMBER_PROMPT,
+        "TOC_PARSING_PROMPT": DEFAULT_TOC_PARSING_PROMPT,
+        "VERIFICATION_PROMPT": DEFAULT_VERIFICATION_PROMPT,
+        "CORRECTION_PROMPT": DEFAULT_CORRECTION_PROMPT,
     }
 
     try:
