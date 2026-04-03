@@ -33,7 +33,13 @@ from query3ai.config.settings import (
     DEFAULT_VERIFICATION_PROMPT,
     DEFAULT_CORRECTION_PROMPT,
 )  # type: ignore
-from query3ai.config.paths import TEMP_OUTPUT_DIR  # type: ignore
+from query3ai.config.paths import (
+    WORKSPACE_DIR,
+    COMPOSE_PATH,
+    CONFIG_PATH,
+    TEMP_OUTPUT_DIR,
+    ensure_workspace,
+)  # type: ignore
 
 from prompt_toolkit import HTML
 from prompt_toolkit.application import Application
@@ -44,19 +50,39 @@ from prompt_toolkit.widgets import Frame, TextArea
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
-from query3ai.config.paths import (
-    WORKSPACE_DIR,
-    COMPOSE_PATH,
-    CONFIG_PATH,
-    ensure_workspace,
-)
-
 import subprocess
-from query3ai.config.paths import COMPOSE_PATH
 
 
 app = typer.Typer(help="Query3AI - Intelligent document query system")
 console = Console()
+
+# ---------------------------------------------------------------------------
+# Default config for `query3ai init` — single source of truth
+# ---------------------------------------------------------------------------
+DEFAULT_CONFIG = {
+    "TREE_API_KEY": "",
+    "DECISION_API_KEY": "",
+    "REASONING_API_KEY": "",
+    "TREE_MODEL": "openai/gpt-4o",
+    "DECISION_MODEL": "openai/gpt-4o-mini",
+    "REASONING_MODEL": "openai/o3-mini",
+    "TREE_API_BASE": "",
+    "DECISION_API_BASE": "",
+    "REASONING_API_BASE": "",
+    "QUERY3AI_CHUNK_SIZE": "500",
+    "NEO4J_URI": "bolt://localhost:7687",
+    "NEO4J_USER": "neo4j",
+    "NEO4J_PASSWORD": "query3ai",
+    "TREE_SYSTEM_PROMPT": DEFAULT_TREE_PROMPT,
+    "DECISION_SYSTEM_PROMPT": DEFAULT_DECISION_PROMPT,
+    "REASONING_SYSTEM_PROMPT": DEFAULT_REASONING_PROMPT,
+    "TOC_DETECTION_PROMPT": DEFAULT_TOC_DETECTION_PROMPT,
+    "TOC_EXTRACTION_PROMPT": DEFAULT_TOC_EXTRACTION_PROMPT,
+    "TOC_PAGE_NUMBER_PROMPT": DEFAULT_TOC_PAGE_NUMBER_PROMPT,
+    "TOC_PARSING_PROMPT": DEFAULT_TOC_PARSING_PROMPT,
+    "VERIFICATION_PROMPT": DEFAULT_VERIFICATION_PROMPT,
+    "CORRECTION_PROMPT": DEFAULT_CORRECTION_PROMPT,
+}
 
 
 def handle_error(e: Exception):
@@ -99,8 +125,6 @@ def handle_error(e: Exception):
             f"[bold red]Network Error:[/bold red] A connection problem occurred.\n[dim]Details: {e}[/dim]"
         )
     else:
-        from rich.text import Text
-
         error_text = Text(str(e))
         console.print(Panel(error_text, title="Error", border_style="red"))
 
@@ -456,8 +480,6 @@ def ask(
             filtered_nodes = filter_nodes(question, target_nodes)
 
         if filtered_nodes:
-            import json
-
             preview_data = [
                 {
                     "node_id": n.get("node_id"),
@@ -591,10 +613,10 @@ def chat():
             ("/ingest", "Ingest a new document from a specified file path."),
             ("/listdocs", "List indexed documentation."),
             ("/list", "List available assets."),
-            ("/listpreresource", "List the number of temporary JSON files created."),
+            ("/listpreresources", "List the number of temporary JSON files created."),
             ("/deletedoc", "Remove a specific document from the database."),
             ("/cleanupdocs", "Delete all documents from the database."),
-            ("/cleanupresorce", "Clean up temporary logs and JSON files."),
+            ("/cleanupresource", "Clean up temporary logs and JSON files."),
             ("/clear", "Clear chat history."),
             ("/exit", "Exit the interactive session."),
         ]
@@ -1046,7 +1068,7 @@ def chat():
                         neo4j_client.clear_all()
                         console.print("[green]Database cleared.[/green]")
                         all_section_nodes = get_all_nodes()
-                elif cmd == "/cleanupresorce" or cmd == "/listpreresource":
+                elif cmd in ("/cleanupresource", "/cleanupresorce") or cmd in ("/listpreresources", "/listpreresource"):
                     if not TEMP_OUTPUT_DIR.exists():
                         console.print(
                             "[yellow]No temporary resource directory found.[/yellow]\n"
@@ -1060,7 +1082,7 @@ def chat():
                         )
                         continue
 
-                    if cmd == "/listpreresource":
+                    if cmd in ("/listpreresources", "/listpreresource"):
                         console.print(
                             f"[bold cyan]Temporary Resources ({len(files)} files):[/bold cyan]"
                         )
@@ -1226,30 +1248,6 @@ services:
     volumes:
       - ./neo4j_data:/data
 """
-        default_config = {
-            "TREE_API_KEY": "",
-            "DECISION_API_KEY": "",
-            "REASONING_API_KEY": "",
-            "TREE_MODEL": "openai/gpt-4o",
-            "DECISION_MODEL": "openai/gpt-4o-mini",
-            "REASONING_MODEL": "openai/o3-mini",
-            "TREE_API_BASE": "",
-            "DECISION_API_BASE": "",
-            "REASONING_API_BASE": "",
-            "QUERY3AI_CHUNK_SIZE": "500",
-            "NEO4J_URI": "bolt://localhost:7687",
-            "NEO4J_USER": "neo4j",
-            "NEO4J_PASSWORD": "query3ai",
-            "TREE_SYSTEM_PROMPT": DEFAULT_TREE_PROMPT,
-            "DECISION_SYSTEM_PROMPT": DEFAULT_DECISION_PROMPT,
-            "REASONING_SYSTEM_PROMPT": DEFAULT_REASONING_PROMPT,
-            "TOC_DETECTION_PROMPT": DEFAULT_TOC_DETECTION_PROMPT,
-            "TOC_EXTRACTION_PROMPT": DEFAULT_TOC_EXTRACTION_PROMPT,
-            "TOC_PAGE_NUMBER_PROMPT": DEFAULT_TOC_PAGE_NUMBER_PROMPT,
-            "TOC_PARSING_PROMPT": DEFAULT_TOC_PARSING_PROMPT,
-            "VERIFICATION_PROMPT": DEFAULT_VERIFICATION_PROMPT,
-            "CORRECTION_PROMPT": DEFAULT_CORRECTION_PROMPT,
-        }
 
         try:
             if not os.path.exists(compose_path):
@@ -1263,7 +1261,7 @@ services:
 
             if not os.path.exists(config_path):
                 with open(config_path, "w") as f:
-                    json.dump(default_config, f, indent=4)
+                    json.dump(DEFAULT_CONFIG, f, indent=4)
                 console.print(f"[green]Created {config_path}[/green]")
             else:
                 console.print(
@@ -1300,31 +1298,6 @@ services:
       - ./neo4j_data:/data
 """
 
-    default_config = {
-        "TREE_API_KEY": "",
-        "DECISION_API_KEY": "",
-        "REASONING_API_KEY": "",
-        "TREE_MODEL": "openai/gpt-4o",
-        "DECISION_MODEL": "openai/gpt-4o-mini",
-        "REASONING_MODEL": "openai/o3-mini",
-        "TREE_API_BASE": "",
-        "DECISION_API_BASE": "",
-        "REASONING_API_BASE": "",
-        "QUERY3AI_CHUNK_SIZE": "500",
-        "NEO4J_URI": "bolt://localhost:7687",
-        "NEO4J_USER": "neo4j",
-        "NEO4J_PASSWORD": "query3ai",
-        "TREE_SYSTEM_PROMPT": DEFAULT_TREE_PROMPT,
-        "DECISION_SYSTEM_PROMPT": DEFAULT_DECISION_PROMPT,
-        "REASONING_SYSTEM_PROMPT": DEFAULT_REASONING_PROMPT,
-        "TOC_DETECTION_PROMPT": DEFAULT_TOC_DETECTION_PROMPT,
-        "TOC_EXTRACTION_PROMPT": DEFAULT_TOC_EXTRACTION_PROMPT,
-        "TOC_PAGE_NUMBER_PROMPT": DEFAULT_TOC_PAGE_NUMBER_PROMPT,
-        "TOC_PARSING_PROMPT": DEFAULT_TOC_PARSING_PROMPT,
-        "VERIFICATION_PROMPT": DEFAULT_VERIFICATION_PROMPT,
-        "CORRECTION_PROMPT": DEFAULT_CORRECTION_PROMPT,
-    }
-
     try:
         if not COMPOSE_PATH.exists():
             with open(COMPOSE_PATH, "w") as f:
@@ -1335,7 +1308,7 @@ services:
 
         if not CONFIG_PATH.exists():
             with open(CONFIG_PATH, "w") as f:
-                json.dump(default_config, f, indent=4)
+                json.dump(DEFAULT_CONFIG, f, indent=4)
             console.print(f"[green]Created {CONFIG_PATH}[/green]")
         else:
             console.print(f"[yellow]Skipped {CONFIG_PATH} (already exists)[/yellow]")

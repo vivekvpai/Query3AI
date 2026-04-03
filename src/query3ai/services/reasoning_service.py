@@ -1,39 +1,25 @@
-import re
-import litellm  # type: ignore
+"""
+Reasoning Service — generates final answers from filtered document sections.
 
-litellm.suppress_debug_info = True
+Uses the unified LLM client for all model calls.
+"""
+from __future__ import annotations
+
+import re
 
 from query3ai.config.settings import settings  # type: ignore
-
-
-def _call_llm(messages: list[dict]) -> str | None:
-    """
-    Thin LLM dispatch helper using LiteLLM.
-    Returns the raw text content from the model response.
-    """
-    kwargs = {}
-    if settings.get_reasoning_api_key():
-        kwargs["api_key"] = settings.get_reasoning_api_key()
-    if settings.get_reasoning_api_base():
-        kwargs["api_base"] = settings.get_reasoning_api_base()
-
-    response = litellm.completion(
-        model=settings.get_active_reasoning_model(),
-        messages=messages,
-        **kwargs
-    )
-    return response.choices[0].message.content
+from query3ai.services.llm_client import call_llm
 
 
 def answer(question: str, context_nodes: list[dict]) -> str:
-    """Uses LLMs to answer a question based on filtered sections from Neo4j."""
+    """Uses the Reasoning Agent to answer a question based on filtered sections from Neo4j."""
 
-    context_blocks = []
+    context_blocks: list[str] = []
     for node in context_nodes:
         heading = str(node.get("heading", ""))
         chunks = node.get("chunks", [])
         chunk_texts = "\n".join(
-            [str(c.get("text", "")) for c in chunks if isinstance(c, dict)]
+            str(c.get("text", "")) for c in chunks if isinstance(c, dict)
         )
         if chunk_texts.strip():
             context_blocks.append(f"--- Section: {heading} ---\n{chunk_texts}")
@@ -44,13 +30,13 @@ def answer(question: str, context_nodes: list[dict]) -> str:
 
     system_prompt = settings.REASONING_SYSTEM_PROMPT.strip()
     try:
-        user_prompt = f"Context: \"{context_text}\"\nQuery: \"{question}\""
+        user_prompt = f'Context: "{context_text}"\nQuery: "{question}"'
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
-        content = _call_llm(messages) or ""
+        content = call_llm("reasoning", messages)
 
         # Clean up Chain-of-Thought reasoning blocks (e.g. from DeepSeek R1)
         if content:

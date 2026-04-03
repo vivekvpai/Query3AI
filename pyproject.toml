@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Query3AI: A multi-agent system combining document structure extraction, relevance filtering, and reasoning with Neo4j."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

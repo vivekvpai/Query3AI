@@ -12,24 +12,20 @@ if WORKSPACE_DIR.exists():
     load_dotenv(WORKSPACE_DIR / ".env")
 
 def load_config() -> dict:
+    """Load configuration from local config.json (cwd) or global ~/.query3ai/config.json."""
     # First check for local config.json in current directory
     local_config = Path.cwd() / "config.json"
     if local_config.exists():
         try:
-            with open(local_config, "w") as f:
-                # Actually, why was I writing to it? 
-                # This seems like a bug in some versions of the code. 
-                # Keeping it READ only.
-                pass
-            with open(local_config, "r") as f:
+            with open(local_config, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
-    
+
     # Fall back to global config.json in ~/.query3ai
     if GLOBAL_CONFIG_PATH.exists():
         try:
-            with open(GLOBAL_CONFIG_PATH, "r") as f:
+            with open(GLOBAL_CONFIG_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
@@ -172,7 +168,7 @@ class Settings:
     CHUNK_SIZE: int = int(_config.get("QUERY3AI_CHUNK_SIZE", os.environ.get("QUERY3AI_CHUNK_SIZE", "500")))
 
     # Phase 1: Ingestion Foundation
-    USE_PAGE_RANGES: bool = _config.get("USE_PAGE_RANGES", os.environ.get("USE_PAGE_RANGES", "True")).lower() == "true"
+    USE_PAGE_RANGES: bool = str(_config.get("USE_PAGE_RANGES", os.environ.get("USE_PAGE_RANGES", "True"))).lower() == "true"
     PAGE_BATCH_SIZE: int = int(_config.get("PAGE_BATCH_SIZE", os.environ.get("PAGE_BATCH_SIZE", "10")))
     PAGE_BATCH_OVERLAP: int = int(_config.get("PAGE_BATCH_OVERLAP", os.environ.get("PAGE_BATCH_OVERLAP", "3")))
 
@@ -188,8 +184,8 @@ class Settings:
     CORRECTION_MAX_RETRIES: int = int(_config.get("CORRECTION_MAX_RETRIES", os.environ.get("CORRECTION_MAX_RETRIES", "3")))
 
     # Phase 4: Orchestration
-    INGEST_STRATEGY_AUTO: bool = _config.get("INGEST_STRATEGY_AUTO", os.environ.get("INGEST_STRATEGY_AUTO", "True")).lower() == "true"
-    FORCE_STRATEGY: str = _config.get("FORCE_STRATEGY", os.environ.get("FORCE_STRATEGY", "auto"))
+    INGEST_STRATEGY_AUTO: bool = str(_config.get("INGEST_STRATEGY_AUTO", os.environ.get("INGEST_STRATEGY_AUTO", "True"))).lower() == "true"
+    FORCE_STRATEGY: str = str(_config.get("FORCE_STRATEGY", os.environ.get("FORCE_STRATEGY", "auto")))
 
     TREE_API_KEY: str = _config.get("TREE_API_KEY", os.environ.get("TREE_API_KEY", ""))
     DECISION_API_KEY: str = _config.get("DECISION_API_KEY", os.environ.get("DECISION_API_KEY", ""))

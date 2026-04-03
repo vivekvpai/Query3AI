@@ -1,10 +1,8 @@
 import json
-import litellm  # type: ignore
 from query3ai.config.settings import settings  # type: ignore
+from query3ai.services.llm_client import call_llm
 from query3ai.services.toc_service import detect_toc, extract_toc, has_page_numbers, parse_toc_to_sections
 from query3ai.services.verification_service import verify_tree, correct_nodes, get_accuracy_threshold
-
-litellm.suppress_debug_info = True
 
 
 def split_pages_with_overlap(
@@ -73,7 +71,7 @@ def merge_overlapping_trees(trees: list[dict]) -> dict:
 
                     if "start_page" in section:
                         existing_sec["start_page"] = min(
-                            existing_sec.get("start_page", 999999),
+                            existing_sec.get("start_page", float("inf")),
                             section["start_page"],
                         )
                         existing_sec["end_page"] = max(
@@ -309,7 +307,7 @@ def _expand_large_sections(tree: dict, pages: list[dict]):
 
 
 def _legacy_build_tree(chunks: list[str]) -> dict:
-    """Uses LiteLLM to form a hierarchical tree from chunks."""
+    """Uses the unified LLM client to form a hierarchical tree from chunks."""
     system_prompt = settings.TREE_SYSTEM_PROMPT.strip()
 
     # Format chunks to match system prompt examples
@@ -318,27 +316,15 @@ def _legacy_build_tree(chunks: list[str]) -> dict:
     ]
     chunk_text = "".join(chunk_strings)
 
-    user_prompt = chunk_text
-
     try:
-        kwargs = {}
-        if settings.get_tree_api_key():
-            kwargs["api_key"] = settings.get_tree_api_key()
-        if settings.get_tree_api_base():
-            kwargs["api_base"] = settings.get_tree_api_base()
-
-        response = litellm.completion(
-            model=settings.get_active_tree_model(),
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            **kwargs,
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": chunk_text},
+        ]
+        raw_content = call_llm(
+            "tree", messages, response_format={"type": "json_object"}
         )
-        raw_content = response.choices[0].message.content or "{}"
-
-        return json.loads(raw_content)
+        return json.loads(raw_content) if raw_content else {}
 
     except Exception as e:
         err_msg = str(e).lower()
@@ -348,5 +334,5 @@ def _legacy_build_tree(chunks: list[str]) -> dict:
         ):
             raise Exception(
                 "Document too large: The extracted chunk text exceeded the AI model's token context window. Ingestion failed."
-            )
-        raise Exception(f"AI Model Connection Error during Tree Building: {e}")
+            ) from e
+        raise Exception(f"AI Model Connection Error during Tree Building: {e}") from e

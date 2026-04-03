@@ -1,49 +1,33 @@
-import json
-import datetime
-import litellm  # type: ignore
+"""
+Decision Service — filters document sections by relevance to a user query.
 
-litellm.suppress_debug_info = True
+Uses the unified LLM client for all model calls.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime
 
 from rich.console import Console  # type: ignore
-from query3ai.config.settings import settings  # type: ignore
+
 from query3ai.config.paths import TEMP_OUTPUT_DIR  # type: ignore
+from query3ai.config.settings import settings  # type: ignore
+from query3ai.services.llm_client import call_llm
 
 console = Console()
 
 
-def _call_llm(messages: list[dict], temperature: float = 0.0) -> str:
-    """
-    Thin LLM dispatch helper shared across this module using LiteLLM.
-    Returns the raw text content from the model response.
-    """
-    kwargs = {}
-    if settings.get_decision_api_key():
-        kwargs["api_key"] = settings.get_decision_api_key()
-    if settings.get_decision_api_base():
-        kwargs["api_base"] = settings.get_decision_api_base()
-
-    response = litellm.completion(
-        model=settings.get_active_decision_model(),
-        messages=messages,
-        temperature=temperature,
-        **kwargs
-    )
-    content = response.choices[0].message.content or ""
-    return content.strip().upper()
-
-
 def filter_nodes(question: str, nodes: list) -> list:
-    """Uses LLMs to check each section's relevance individually (YES/NO)."""
+    """Uses the Decision Agent to check each section's relevance (YES/NO)."""
     system_prompt = settings.DECISION_SYSTEM_PROMPT.strip()
-
-    yes_nodes = []
+    yes_nodes: list[dict] = []
 
     # Ensure global temp directory exists
     TEMP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     temp_file = TEMP_OUTPUT_DIR / f"related_nodes_{timestamp}.json"
 
-    debug_logs = []
+    debug_logs: list[str] = []
 
     if len(nodes) > 15:
         console.print(f"  [dim]Global Context: Batch evaluating {len(nodes)} sections sequentially...[/dim]")
@@ -52,24 +36,10 @@ def filter_nodes(question: str, nodes: list) -> list:
         node_id = node.get("node_id", "")
         heading = node.get("heading", "")
         summary = node.get("summary", "")
-        keywords = node.get("keywords", [])
-
-        # Format keywords as a comma-separated string if it's a list
-        keywords_str = (
-            ", ".join(keywords) if isinstance(keywords, list) else str(keywords)
-        )
-
-        chunk_texts = "\n".join(
-            [
-                str(c.get("text", ""))
-                for c in node.get("chunks", [])
-                if isinstance(c, dict)
-            ]
-        )
 
         user_prompt = (
-            f"Query: \"{question}\"\n"
-            f"Heading: \"{heading}\" | Summary: \"{summary}\""
+            f'Query: "{question}"\n'
+            f'Heading: "{heading}" | Summary: "{summary}"'
         )
 
         messages = [
@@ -78,7 +48,7 @@ def filter_nodes(question: str, nodes: list) -> list:
         ]
 
         try:
-            raw = _call_llm(messages, temperature=0.0)
+            raw = call_llm("decision", messages, temperature=0.0).upper()
             debug_logs.append(f"Query: {question}\nNode {heading} response: {raw}\n---\n")
 
             if "YES" in raw:
